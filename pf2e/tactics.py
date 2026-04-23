@@ -1,14 +1,17 @@
 """Commander tactic definitions, dispatcher, and evaluators.
 
-The five folio tactics for Aetregan (Battlecry! Commander, level 1):
+Aetregan's folio (Battlecry! Commander, level 1):
 - Strike Hard! (offensive, 2 actions)
 - Gather to Me! (mobility, 1 action)
 - Tactical Takedown (offensive, 2 actions)
-- Defensive Retreat (mobility, 2 actions — placeholder evaluator)
 - Mountaineering Training (mobility, 1 action — placeholder evaluator)
+- Shields Up! (offensive, 1 action — stub, CP5 implements evaluator)
 
-Three are prepared by default; the other two are in the folio for future
-re-preparation.
+Three are prepared by default: Strike Hard!, Gather to Me!, Tactical
+Takedown. The other two are in the folio for future re-preparation.
+
+Note: Defensive Retreat is NOT in Aetregan's folio but its definition
+and evaluator are retained for other potential commanders.
 
 (AoN: https://2e.aonprd.com/Tactics.aspx)
 """
@@ -251,12 +254,24 @@ MOUNTAINEERING_TRAINING = TacticDefinition(
     prerequisites=(),
 )
 
+SHIELDS_UP = TacticDefinition(
+    name="Shields Up!",
+    aon_url="https://2e.aonprd.com/Tactics.aspx?ID=12",
+    action_cost=1,
+    traits=frozenset({"offensive"}),
+    range_type="banner_aura",
+    target_type="all_squadmates_in_aura",
+    granted_action="reaction_raise_shield",
+    modifiers={},
+    prerequisites=("squadmate_in_aura_with_shield",),
+)
+
 FOLIO_TACTICS: dict[str, TacticDefinition] = {
     "strike_hard": STRIKE_HARD,
     "gather_to_me": GATHER_TO_ME,
     "tactical_takedown": TACTICAL_TAKEDOWN,
-    "defensive_retreat": DEFENSIVE_RETREAT,
     "mountaineering_training": MOUNTAINEERING_TRAINING,
+    "shields_up": SHIELDS_UP,
 }
 
 PREPARED_TACTICS: tuple[str, ...] = (
@@ -697,6 +712,26 @@ def intercept_attack_ev(
     return float(guardians_armor_resistance(rook.character.level))
 
 
+def _evaluate_reaction_raise_shield(
+    defn: TacticDefinition, ctx: TacticContext,
+) -> TacticResult:
+    """Shields Up! — squadmates raise shields as reactions.
+
+    NOT IMPLEMENTED in Checkpoint 4.5. Full evaluator is Checkpoint 5
+    work (requires per-ally +2 AC defensive math). Returns ineligible.
+    (AoN: https://2e.aonprd.com/Tactics.aspx?ID=12)
+    """
+    return TacticResult(
+        tactic_name=defn.name,
+        action_cost=defn.action_cost,
+        eligible=False,
+        ineligibility_reason=(
+            "Shields Up! evaluator is not yet implemented "
+            "(pending Checkpoint 5)."
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
@@ -709,6 +744,7 @@ _EVALUATORS: dict[
     "stride_half_speed": _evaluate_stride_half,
     "free_step": _evaluate_free_step,
     "passive_buff": _evaluate_passive_buff,
+    "reaction_raise_shield": _evaluate_reaction_raise_shield,
 }
 
 

@@ -6,7 +6,7 @@
 name = Strike Hard Validation
 level = 1
 source = Checkpoint 1 ground truth
-description = Rook adjacent to Bandit1 in banner aura. Anthem active.
+description = Rook adjacent to Bandit1. Aetregan carries her banner (30-ft emanation). Anthem active.
 
 [grid]
 . . . . . . . . . .
@@ -21,7 +21,7 @@ description = Rook adjacent to Bandit1 in banner aura. Anthem active.
 . . . . . . . . . .
 
 [banner]
-planted = true
+planted = false
 position = 5, 5
 
 [anthem]

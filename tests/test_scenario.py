@@ -27,8 +27,8 @@ class TestKillerValidation:
         )
         assert scenario.name == "Strike Hard Validation"
         assert scenario.level == 1
-        assert scenario.banner_planted is True
-        assert scenario.banner_position == (5, 5)
+        assert scenario.banner_planted is False
+        assert scenario.banner_position == (5, 5)  # informational for carried
         assert scenario.anthem_active is True
         assert len(scenario.squadmates) == 3
         assert len(scenario.enemies) == 1

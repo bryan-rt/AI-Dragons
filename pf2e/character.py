@@ -54,6 +54,12 @@ class Character:
     # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2153)
     speed: int = 25
 
+    # Max HP components — default 0 for backward compatibility.
+    # Characters with tracked HP must set both.
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2145)
+    ancestry_hp: int = 0
+    class_hp: int = 0
+
 
 @dataclass
 class CombatantState:

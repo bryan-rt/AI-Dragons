@@ -580,13 +580,12 @@ class TestMortarScaling:
 class TestPerception:
 
     def test_aetregan_perception(self) -> None:
-        """Wis 12 → mod +1, trained +3 = +4.
+        """Wis 12 → mod +1, expert +5 = +6.
 
-        Wis corrected from 11 to 12 in Checkpoint 0.5. Now matches the
-        character sheet's stated +4.
-        (AoN: https://2e.aonprd.com/Rules.aspx?ID=2110)
+        Commander has expert Perception at L1.
+        (AoN: https://2e.aonprd.com/Classes.aspx?ID=66)
         """
-        assert perception_bonus(make_aetregan()) == 4
+        assert perception_bonus(make_aetregan()) == 6
 
     def test_rook_perception(self) -> None:
         """Wis +1, expert +5 = +6."""

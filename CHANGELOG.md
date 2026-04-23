@@ -1,5 +1,32 @@
 # Changelog
 
+## [4.5] - Aetregan Reconciliation
+
+### Character corrections
+- Cha: 12 -> 10 (ability score correction from Pathbuilder sheet)
+- Perception: trained -> expert (Commander gets expert at L1)
+  (AoN: https://2e.aonprd.com/Classes.aspx?ID=66)
+- Weapon: Whip -> Scorpion Whip (same stats minus nonlethal)
+  (AoN: https://2e.aonprd.com/Weapons.aspx?ID=114)
+
+### Folio composition
+- Removed Defensive Retreat from FOLIO_TACTICS (not in Aetregan's
+  actual folio). Definition and evaluator retained for other commanders.
+- Added stub Shields Up! tactic definition. Full evaluator deferred to CP5.
+  (AoN: https://2e.aonprd.com/Tactics.aspx?ID=12)
+
+### HP infrastructure
+- Added ancestry_hp and class_hp fields to Character (default 0).
+- Added max_hp(character) helper: ancestry_hp + (class_hp + Con) x level.
+  (AoN: https://2e.aonprd.com/Rules.aspx?ID=2145)
+- Aetregan: ancestry_hp=6, class_hp=8 -> max HP 15 at L1.
+
+### Carried-banner support
+- GridSpatialQueries.is_in_banner_aura now handles carried banner:
+  aura emanates from commander's position, 30-ft radius.
+- Scenario parser accepts planted=false. Position optional when carried.
+- Updated checkpoint_1_strike_hard.scenario to planted=false.
+
 ## [4.0] - Checkpoint 4: Defensive Value Computation
 
 ### Correctness fix

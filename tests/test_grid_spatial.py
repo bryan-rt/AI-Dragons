@@ -300,3 +300,48 @@ class TestDiagonalBypass:
         # One diagonal step (5 ft) to (2,4) or (4,4), both adjacent to target
         assert spatial.can_reach_with_stride("Rook", "Target", 5) is True
         assert spatial.can_reach_with_stride("Rook", "Target", 4) is False
+
+
+# ---------------------------------------------------------------------------
+# Carried-banner aura tests (Checkpoint 4.5)
+# ---------------------------------------------------------------------------
+
+class TestCarriedBannerFollowsCommander:
+    """Carried banner's aura is centered on the commander, not banner_position.
+
+    (AoN: https://2e.aonprd.com/Classes.aspx?ID=66)
+    """
+
+    def test_aura_centered_on_commander_when_carried(self) -> None:
+        grid = GridState(rows=20, cols=20)
+        aetregan = CombatantState.from_character(make_aetregan())
+        aetregan.position = (10, 10)
+        ally = make_rook_combat_state()
+        ally.position = (10, 15)  # 5 orth = 25 ft from commander
+
+        # Carried: aura from commander at (10,10). Ally at 25 ft → IN 30-ft.
+        # banner_position=(0,0) is deliberately bogus — should be ignored.
+        carried = GridSpatialQueries(
+            grid_state=grid, commander=aetregan,
+            squadmates=[ally], enemies=[],
+            banner_position=(0, 0),
+            banner_planted=False,
+        )
+        assert carried.is_in_banner_aura("Rook") is True
+
+    def test_aura_not_centered_on_commander_when_planted(self) -> None:
+        """Sanity: planted banner does NOT follow commander."""
+        grid = GridState(rows=20, cols=20)
+        aetregan = CombatantState.from_character(make_aetregan())
+        aetregan.position = (10, 10)
+        ally = make_rook_combat_state()
+        ally.position = (10, 15)
+
+        # Planted at (0,0). Ally at (10,15) is far from (0,0).
+        planted = GridSpatialQueries(
+            grid_state=grid, commander=aetregan,
+            squadmates=[ally], enemies=[],
+            banner_position=(0, 0),
+            banner_planted=True,
+        )
+        assert planted.is_in_banner_aura("Rook") is False

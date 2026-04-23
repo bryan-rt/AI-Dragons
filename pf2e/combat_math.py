@@ -16,6 +16,22 @@ from pf2e.types import Ability, ProficiencyRank, SaveType
 
 
 # ---------------------------------------------------------------------------
+# Helper: max HP
+# ---------------------------------------------------------------------------
+
+def max_hp(character: Character) -> int:
+    """Maximum hit points for a character.
+
+    Formula: ancestry_hp + (class_hp + Con modifier) x level.
+    Returns 0 if the character has no HP data (both ancestry_hp and
+    class_hp at default 0).
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2145)
+    """
+    con_mod = character.abilities.mod(Ability.CON)
+    return character.ancestry_hp + (character.class_hp + con_mod) * character.level
+
+
+# ---------------------------------------------------------------------------
 # Helper: effective speed
 # ---------------------------------------------------------------------------
 

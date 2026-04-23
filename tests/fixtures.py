@@ -11,6 +11,7 @@ from sim.party import (  # noqa: F401
     LEATHER_ARMOR,
     LONGSWORD,
     RAPIER,
+    SCORPION_WHIP,
     STEEL_SHIELD,
     STUDDED_LEATHER,
     SUBTERFUGE_SUIT,

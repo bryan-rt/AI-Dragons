@@ -48,6 +48,20 @@ WHIP = Weapon(
     hands=1,
 )
 
+SCORPION_WHIP = Weapon(
+    name="Scorpion Whip",
+    category=WeaponCategory.MARTIAL,
+    group=WeaponGroup.FLAIL,
+    damage_die="d4",
+    damage_die_count=1,
+    damage_type=DamageType.SLASHING,
+    range_increment=None,
+    # Same as Whip minus nonlethal: scorpion whips deal lethal damage.
+    # (AoN: https://2e.aonprd.com/Weapons.aspx?ID=114)
+    traits=frozenset({"finesse", "reach", "trip", "disarm"}),
+    hands=1,
+)
+
 LONGSWORD = Weapon(
     name="Longsword",
     category=WeaponCategory.MARTIAL,
@@ -144,23 +158,30 @@ STUDDED_LEATHER = ArmorData(
 def make_aetregan() -> Character:
     """Aetregan — Commander (Battlecry!), level 1.
 
-    Key ability: INT. Wields whip (finesse), wears subterfuge suit,
-    carries steel shield. Has Shield Block.
+    Key ability: INT. Wields Scorpion Whip (finesse, reach, trip, disarm),
+    wears Inventor Subterfuge Suit, carries Steel Shield. Has Shield Block.
 
-    AC: 10 + Dex 3 + trained medium 3 + suit 2 = 18 (no shield)
-    Class DC: 10 + Int 4 + trained 3 = 17
+    AC: 10 + Dex 3 + trained medium 3 + suit 2 = 18 (no shield).
+    Class DC: 10 + Int 4 + trained 3 = 17.
+    Perception: Wis 1 + expert 5 = +6.
+    Max HP: 6 (Elf) + (8 (Commander) + 1 (Con)) x 1 = 15.
 
-    Wis 12 (not 11): attribute boosts are +2 to score / +1 to modifier.
-    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2110)
+    L1 Commander Feat: Deceptive Tactics (use Warfare Lore for Create
+    a Diversion and Feint). Skill action modeling is CP5 work.
+    (AoN: https://2e.aonprd.com/Feats.aspx?ID=7794)
 
-    Speed 30 ft (Elf base).
-    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=60)
+    Folio (5 tactics): Strike Hard!, Gather to Me!, Tactical Takedown,
+    Mountaineering Training, Shields Up!.
+    Prepared (3): Strike Hard!, Gather to Me!, Tactical Takedown.
+
+    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=60 — Elf)
+    (AoN: https://2e.aonprd.com/Classes.aspx?ID=66 — Commander)
     """
     return Character(
         name="Aetregan",
         level=1,
         abilities=AbilityScores(
-            str_=10, dex=16, con=12, int_=18, wis=12, cha=12,
+            str_=10, dex=16, con=12, int_=18, wis=12, cha=10,
         ),
         key_ability=Ability.INT,
         weapon_proficiencies={
@@ -170,18 +191,20 @@ def make_aetregan() -> Character:
             WeaponCategory.ADVANCED: ProficiencyRank.UNTRAINED,
         },
         armor_proficiency=ProficiencyRank.TRAINED,
-        perception_rank=ProficiencyRank.TRAINED,
+        perception_rank=ProficiencyRank.EXPERT,
         save_ranks={
             SaveType.FORTITUDE: ProficiencyRank.TRAINED,
             SaveType.REFLEX: ProficiencyRank.EXPERT,
             SaveType.WILL: ProficiencyRank.EXPERT,
         },
         class_dc_rank=ProficiencyRank.TRAINED,
-        equipped_weapons=(EquippedWeapon(WHIP),),
+        equipped_weapons=(EquippedWeapon(SCORPION_WHIP),),
         armor=SUBTERFUGE_SUIT,
         shield=STEEL_SHIELD,
         has_shield_block=True,
         speed=30,
+        ancestry_hp=6,
+        class_hp=8,
     )
 
 

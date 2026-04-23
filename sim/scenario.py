@@ -214,15 +214,16 @@ def _parse_banner(
             f"[banner] planted must be 'true' or 'false', got '{planted_str}'"
         )
     planted = planted_str == "true"
-    if not planted:
-        raise ScenarioParseError(
-            "Carried banner (planted=false) is not yet supported. "
-            "Use planted=true for Checkpoint 3."
-        )
 
     pos_str = kv.get("position")
     if pos_str is None:
-        raise ScenarioParseError("[banner] section requires 'position = row, col'")
+        if planted:
+            raise ScenarioParseError(
+                "[banner] section with planted=true requires 'position = row, col'"
+            )
+        # Carried banner: position is optional (aura follows commander)
+        return None, False
+
     try:
         parts = pos_str.split(",")
         pos: Pos = (int(parts[0].strip()), int(parts[1].strip()))

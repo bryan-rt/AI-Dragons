@@ -406,3 +406,29 @@ class TestEvaluateAllPrepared:
         # Gather to Me is always eligible; the others aren't
         eligible_names = {r.tactic_name for r in results if r.eligible}
         assert "Gather to Me!" in eligible_names
+
+
+# ---------------------------------------------------------------------------
+# Folio composition tests (Checkpoint 4.5)
+# ---------------------------------------------------------------------------
+
+class TestFolioComposition:
+    """Aetregan's folio reflects her actual character build."""
+
+    def test_folio_has_five_tactics(self) -> None:
+        from pf2e.tactics import FOLIO_TACTICS
+        assert len(FOLIO_TACTICS) == 5
+
+    def test_folio_contains_shields_up_not_defensive_retreat(self) -> None:
+        from pf2e.tactics import FOLIO_TACTICS
+        assert "shields_up" in FOLIO_TACTICS
+        assert "defensive_retreat" not in FOLIO_TACTICS
+
+    def test_shields_up_not_yet_implemented(
+        self, base_context: TacticContext,
+    ) -> None:
+        """Shields Up! evaluator is stubbed; CP5 implements it."""
+        from pf2e.tactics import SHIELDS_UP
+        result = evaluate_tactic(SHIELDS_UP, base_context)
+        assert not result.eligible
+        assert "not yet implemented" in result.ineligibility_reason.lower()
