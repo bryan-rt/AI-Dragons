@@ -40,10 +40,11 @@ def attack_ability(
 ) -> Ability:
     """Which ability score drives the attack roll for this character + weapon.
 
-    - Pure ranged (has range_increment, not thrown): Dex
+    - Pure ranged (not a thrown-melee weapon): Dex
       (AoN: https://2e.aonprd.com/Rules.aspx?ID=2187)
-    - Thrown (when actually throwing): Dex
+    - Thrown-melee weapon being thrown (thrown=True): Dex
       (AoN: https://2e.aonprd.com/Traits.aspx?ID=195)
+    - Thrown-melee weapon used in melee (thrown=False): finesse or Str
     - Finesse melee: higher of Str or Dex
       (AoN: https://2e.aonprd.com/Traits.aspx?ID=548)
     - Other melee: Str
@@ -53,7 +54,7 @@ def attack_ability(
             A dagger used in melee should pass thrown=False and use
             finesse rules instead.
     """
-    if weapon.is_ranged or thrown:
+    if thrown or (weapon.is_ranged and not weapon.is_thrown):
         return Ability.DEX
     if weapon.is_finesse:
         str_mod = character.abilities.mod(Ability.STR)

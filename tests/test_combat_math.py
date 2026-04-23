@@ -304,17 +304,16 @@ class TestArmorClass:
 class TestSaveBonuses:
 
     def test_aetregan_saves(self) -> None:
-        """Aetregan: Fort +4, Ref +8, Will +5.
+        """Aetregan: Fort +4, Ref +8, Will +6.
 
-        DISCREPANCY: Brief A.3 says Will +6, but Wis 11 → mod +0,
-        expert at level 1 = +5, so Will = 0+5 = 5. The character sheet
-        lists "Wis +1" which is wrong for score 11 (mod = (11-10)//2 = 0).
-        Derivation from ability scores is the ground truth.
+        Wis corrected from 11 to 12 in Checkpoint 0.5 (attribute boosts
+        are always +2 to score). Wis 12 → mod +1, expert +5 = Will +6.
+        (AoN: https://2e.aonprd.com/Rules.aspx?ID=2110)
         """
         c = make_aetregan()
         assert save_bonus(c, SaveType.FORTITUDE) == 4   # Con +1, trained +3
         assert save_bonus(c, SaveType.REFLEX) == 8      # Dex +3, expert +5
-        assert save_bonus(c, SaveType.WILL) == 5        # Wis +0, expert +5
+        assert save_bonus(c, SaveType.WILL) == 6        # Wis +1, expert +5
 
     def test_rook_saves(self) -> None:
         """Rook: Fort +8, Ref +3, Will +6."""
@@ -580,17 +579,13 @@ class TestMortarScaling:
 class TestPerception:
 
     def test_aetregan_perception(self) -> None:
-        """Wis +0, trained +3 = +3. Wait, Wis 11 → +0. Trained +3. Total = 3."""
-        # Actually: Aetregan Wis 11 → mod = (11-10)//2 = 0.
-        # Trained perception at level 1 = 2 + 1 = 3.
-        # Total = 0 + 3 = 3.
-        # But the character sheet says +4. Let's check:
-        # The sheet says "Perception: Trained (+4 = Wis +1, +2 trained, +1 level)"
-        # Wis 11 → mod 0, NOT +1. Sheet has a discrepancy (Wis was 10 originally
-        # then changed to 11). With Wis 11 → mod 0:
-        # perception = 0 + (2+1) = 3.
-        # We follow the derivation, not the hand-computed sheet value.
-        assert perception_bonus(make_aetregan()) == 3
+        """Wis 12 → mod +1, trained +3 = +4.
+
+        Wis corrected from 11 to 12 in Checkpoint 0.5. Now matches the
+        character sheet's stated +4.
+        (AoN: https://2e.aonprd.com/Rules.aspx?ID=2110)
+        """
+        assert perception_bonus(make_aetregan()) == 4
 
     def test_rook_perception(self) -> None:
         """Wis +1, expert +5 = +6."""

@@ -38,11 +38,27 @@ class Weapon:
 
     @property
     def is_melee(self) -> bool:
-        return self.range_increment is None
+        """True if this weapon can be used in melee.
+
+        A weapon is melee if it has no range increment (pure melee) OR
+        if it has the thrown trait (thrown weapons are melee weapons that
+        can also be thrown — they appear in the Melee Weapons table).
+
+        (AoN: https://2e.aonprd.com/Rules.aspx?ID=2176)
+        (AoN: https://2e.aonprd.com/Traits.aspx?ID=195)
+        """
+        return self.range_increment is None or self.is_thrown
 
     @property
     def is_ranged(self) -> bool:
-        return self.range_increment is not None and not self.is_thrown
+        """True if this weapon can attack at range (has a range increment).
+
+        Includes both pure ranged weapons (bows, firearms) and
+        thrown-trait melee weapons that have a range increment.
+
+        (AoN: https://2e.aonprd.com/Rules.aspx?ID=2176)
+        """
+        return self.range_increment is not None
 
     @property
     def is_finesse(self) -> bool:

@@ -3,6 +3,7 @@
 from tests.fixtures import (
     DAGGER,
     FULL_PLATE,
+    JAVELIN,
     LEATHER_ARMOR,
     LONGSWORD,
     RAPIER,
@@ -11,7 +12,7 @@ from tests.fixtures import (
     SUBTERFUGE_SUIT,
     WHIP,
 )
-from pf2e.equipment import EquippedWeapon, WeaponRunes
+from pf2e.equipment import EquippedWeapon, Weapon, WeaponRunes
 from pf2e.types import DamageType, WeaponCategory, WeaponGroup
 
 
@@ -77,6 +78,66 @@ class TestDagger:
     def test_stats(self) -> None:
         assert DAGGER.category == WeaponCategory.SIMPLE
         assert DAGGER.damage_die == "d4"
+        assert DAGGER.range_increment == 10
+
+    def test_dual_mode(self) -> None:
+        """Dagger is both melee (thrown-melee) and ranged (has range increment).
+
+        (AoN: https://2e.aonprd.com/Weapons.aspx?ID=358)
+        (AoN: https://2e.aonprd.com/Traits.aspx?ID=195)
+        """
+        assert DAGGER.is_melee   # thrown-melee weapon usable in melee
+        assert DAGGER.is_ranged  # has range increment, can be thrown
+
+
+class TestJavelin:
+    """Javelin: pure thrown weapon (melee + ranged).
+
+    (AoN: https://2e.aonprd.com/Weapons.aspx?ID=71)
+    """
+
+    def test_thrown(self) -> None:
+        assert JAVELIN.is_thrown
+        assert JAVELIN.range_increment == 30
+
+    def test_dual_mode(self) -> None:
+        """Javelin is both melee (thrown trait) and ranged (range increment)."""
+        assert JAVELIN.is_melee
+        assert JAVELIN.is_ranged
+
+    def test_not_finesse(self) -> None:
+        assert not JAVELIN.is_finesse
+        assert not JAVELIN.is_agile
+
+
+class TestMeleeRangedClassification:
+    """Verify is_melee/is_ranged for all weapon archetypes."""
+
+    def test_pure_melee(self) -> None:
+        """Longsword: no range increment, no thrown → melee only."""
+        assert LONGSWORD.is_melee
+        assert not LONGSWORD.is_ranged
+
+    def test_thrown_melee(self) -> None:
+        """Dagger: thrown trait + range increment → both melee and ranged."""
+        assert DAGGER.is_melee
+        assert DAGGER.is_ranged
+
+    def test_pure_ranged(self) -> None:
+        """A longbow (no thrown trait, has range) → ranged only."""
+        longbow = Weapon(
+            name="Longbow",
+            category=WeaponCategory.MARTIAL,
+            group=WeaponGroup.BOW,
+            damage_die="d8",
+            damage_die_count=1,
+            damage_type=DamageType.PIERCING,
+            range_increment=100,
+            traits=frozenset({"deadly_d10", "volley_30"}),
+            hands=2,
+        )
+        assert not longbow.is_melee
+        assert longbow.is_ranged
 
 
 class TestSteelShield:

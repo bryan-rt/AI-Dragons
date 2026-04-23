@@ -68,6 +68,18 @@ RAPIER = Weapon(
     hands=1,
 )
 
+JAVELIN = Weapon(
+    name="Javelin",
+    category=WeaponCategory.SIMPLE,
+    group=WeaponGroup.DART,
+    damage_die="d6",
+    damage_die_count=1,
+    damage_type=DamageType.PIERCING,
+    range_increment=30,  # thrown 30 ft (AoN: https://2e.aonprd.com/Weapons.aspx?ID=71)
+    traits=frozenset({"thrown_30"}),
+    hands=1,
+)
+
 DAGGER = Weapon(
     name="Dagger",
     category=WeaponCategory.SIMPLE,
@@ -75,7 +87,7 @@ DAGGER = Weapon(
     damage_die="d4",
     damage_die_count=1,
     damage_type=DamageType.PIERCING,
-    range_increment=None,  # melee mode (can also be thrown, handled separately)
+    range_increment=10,  # thrown 10 ft (AoN: https://2e.aonprd.com/Weapons.aspx?ID=358)
     traits=frozenset({"agile", "finesse", "thrown_10", "versatile_s"}),
     hands=1,
 )
@@ -134,12 +146,16 @@ def make_aetregan() -> Character:
 
     AC: 10 + Dex 3 + trained medium 3 + suit 2 = 18 (no shield)
     Class DC: 10 + Int 4 + trained 3 = 17
+
+    Wis 12 (not 11): attribute boosts are +2 to score / +1 to modifier.
+    Score 11 is not achievable via boosts.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2110)
     """
     return Character(
         name="Aetregan",
         level=1,
         abilities=AbilityScores(
-            str_=10, dex=16, con=12, int_=18, wis=11, cha=12,
+            str_=10, dex=16, con=12, int_=18, wis=12, cha=12,
         ),
         key_ability=Ability.INT,
         weapon_proficiencies={
