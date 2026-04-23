@@ -16,6 +16,21 @@ from pf2e.types import Ability, ProficiencyRank, SaveType
 
 
 # ---------------------------------------------------------------------------
+# Helper: effective speed
+# ---------------------------------------------------------------------------
+
+def effective_speed(state: CombatantState) -> int:
+    """Current effective speed, accounting for armor and conditions.
+
+    Returns state.current_speed if set, else state.character.speed.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2153)
+    """
+    if state.current_speed is not None:
+        return state.current_speed
+    return state.character.speed
+
+
+# ---------------------------------------------------------------------------
 # Helper: die average
 # ---------------------------------------------------------------------------
 

@@ -49,6 +49,11 @@ class Character:
     # Extra damage sources (label, average value), e.g., sneak attack
     extra_damage_bonuses: tuple[tuple[str, float], ...] = ()
 
+    # Base speed in feet, from ancestry + feats (not armor/conditions).
+    # Default 25 ft; Elves get 30, Nimble Elf adds +5, etc.
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2153)
+    speed: int = 25
+
 
 @dataclass
 class CombatantState:
@@ -76,6 +81,11 @@ class CombatantState:
     # (AoN: https://2e.aonprd.com/Conditions.aspx?ID=42)
     frightened: int = 0
     prone: bool = False
+
+    # Current speed, if modified by armor or conditions.
+    # None = use character.speed as-is.
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2153)
+    current_speed: int | None = None
 
     # Status bonuses (e.g., Courageous Anthem +1)
     # (AoN: https://2e.aonprd.com/Spells.aspx?ID=1763)

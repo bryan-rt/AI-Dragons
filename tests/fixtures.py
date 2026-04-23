@@ -5,7 +5,7 @@ These are the canonical source of truth for tests.
 """
 
 from pf2e.abilities import AbilityScores
-from pf2e.character import Character
+from pf2e.character import Character, CombatantState
 from pf2e.equipment import ArmorData, EquippedWeapon, Shield, Weapon, WeaponRunes
 from pf2e.types import (
     Ability,
@@ -150,6 +150,9 @@ def make_aetregan() -> Character:
     Wis 12 (not 11): attribute boosts are +2 to score / +1 to modifier.
     Score 11 is not achievable via boosts.
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2110)
+
+    Speed 30 ft (Elf base).
+    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=60)
     """
     return Character(
         name="Aetregan",
@@ -176,6 +179,7 @@ def make_aetregan() -> Character:
         armor=SUBTERFUGE_SUIT,
         shield=STEEL_SHIELD,
         has_shield_block=True,
+        speed=30,
     )
 
 
@@ -187,6 +191,10 @@ def make_rook() -> Character:
 
     AC: 10 + Dex 0 (capped 0) + trained heavy 3 + full plate 6 = 19
     Class DC: 10 + Str 4 + trained 3 = 17
+
+    Speed: base 25 (Automaton). Full plate penalty applied via
+    CombatantState.current_speed=20 (see make_rook_combat_state).
+    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=48)
     """
     return Character(
         name="Rook",
@@ -225,6 +233,8 @@ def make_dalai() -> Character:
 
     AC: 10 + Dex 2 + trained light 3 + leather 1 = 16
     Class DC: 10 + Cha 4 + trained 3 = 17
+    Speed: 25 ft (Human base).
+    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=64)
     """
     return Character(
         name="Dalai Alpaca",
@@ -260,6 +270,9 @@ def make_erisen() -> Character:
 
     AC: 10 + Dex 2 (capped 3) + trained medium 3 + studded leather 2 = 17
     Class DC: 10 + Int 4 + trained 3 = 17
+    Speed: 35 ft (Elf base 30 + Nimble Elf +5).
+    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=60)
+    (AoN: https://2e.aonprd.com/Feats.aspx?ID=16)
     """
     return Character(
         name="Erisen",
@@ -284,4 +297,16 @@ def make_erisen() -> Character:
         class_dc_rank=ProficiencyRank.TRAINED,
         equipped_weapons=(EquippedWeapon(DAGGER),),
         armor=STUDDED_LEATHER,
+        speed=35,
     )
+
+
+def make_rook_combat_state(anthem_active: bool = False) -> CombatantState:
+    """Rook's CombatantState with full plate speed penalty applied.
+
+    Base Speed 25 - full plate penalty 10 + Str 18 threshold reduction 5 = 20 ft.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2169)
+    """
+    state = CombatantState.from_character(make_rook(), anthem_active=anthem_active)
+    state.current_speed = 20
+    return state

@@ -18,6 +18,7 @@ from pf2e.combat_math import (
     damage_ability_mod,
     damage_avg,
     die_average,
+    effective_speed,
     enumerate_d20_outcomes,
     expected_aoe_damage,
     expected_strike_damage,
@@ -590,3 +591,31 @@ class TestPerception:
     def test_rook_perception(self) -> None:
         """Wis +1, expert +5 = +6."""
         assert perception_bonus(make_rook()) == 6
+
+
+# ---------------------------------------------------------------------------
+# Effective speed
+# ---------------------------------------------------------------------------
+
+class TestEffectiveSpeed:
+
+    def test_default_uses_character_speed(self) -> None:
+        """Aetregan (Elf): base speed 30 ft."""
+        state = CombatantState.from_character(make_aetregan())
+        assert effective_speed(state) == 30
+
+    def test_current_speed_override(self) -> None:
+        """Rook in full plate: current_speed=20 overrides base 25."""
+        state = CombatantState.from_character(make_rook())
+        state.current_speed = 20
+        assert effective_speed(state) == 20
+
+    def test_erisen_nimble_elf(self) -> None:
+        """Erisen (Elf + Nimble Elf): base 35 ft."""
+        state = CombatantState.from_character(make_erisen())
+        assert effective_speed(state) == 35
+
+    def test_dalai_human_base(self) -> None:
+        """Dalai (Human): base 25 ft."""
+        state = CombatantState.from_character(make_dalai())
+        assert effective_speed(state) == 25

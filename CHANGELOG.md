@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.0] - Checkpoint 1: Tactic Dispatcher
+
+### Foundation additions
+- **Speed on Character and CombatantState**: Character.speed is base
+  (ancestry+feats), CombatantState.current_speed is the combat-time
+  override for armor penalties. effective_speed(state) returns the
+  active value.
+  (AoN: https://2e.aonprd.com/Rules.aspx?ID=2153)
+
+### Character sheet corrections
+- **Aetregan Speed**: 30 ft (Elf base, not 25 as assumed).
+  (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=60)
+- **Erisen Speed**: 35 ft (Elf 30 + Nimble Elf +5).
+  (AoN: https://2e.aonprd.com/Feats.aspx?ID=16)
+- **Rook Speed**: Base 25 (Automaton), effective 20 with full plate.
+  (AoN: https://2e.aonprd.com/Rules.aspx?ID=2169)
+- **Dalai Speed**: 25 ft (Human base).
+  (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=64)
+
+### New module: pf2e/tactics.py
+- TacticDefinition, TacticContext, TacticResult, EnemyState,
+  SpatialQueries protocol, MockSpatialQueries
+- FOLIO_TACTICS registry with all 5 of Aetregan's folio tactics:
+  - Strike Hard! (https://2e.aonprd.com/Tactics.aspx?ID=13)
+  - Gather to Me! (https://2e.aonprd.com/Tactics.aspx?ID=2)
+  - Tactical Takedown (https://2e.aonprd.com/Tactics.aspx?ID=14)
+  - Defensive Retreat (https://2e.aonprd.com/Tactics.aspx?ID=1)
+  - Mountaineering Training (https://2e.aonprd.com/Tactics.aspx?ID=3)
+- Dispatcher: evaluate_tactic() routes by granted_action;
+  evaluate_all_prepared() returns results sorted by net_value.
+- Evaluators: Strike Hard computes reaction Strike EV at MAP 0;
+  Tactical Takedown computes prone probability via d20 enumeration;
+  Gather to Me tracks squadmate response counts;
+  Defensive Retreat and Mountaineering Training are placeholders.
+
+### Design decisions
+- Dispatch via dict of callables keyed by granted_action string.
+- SpatialQueries as Protocol; MockSpatialQueries for Checkpoint 1 tests.
+  Checkpoint 2 will add real grid-backed implementation.
+- TacticResult includes conditions_applied and condition_probabilities
+  for Checkpoint 5's turn evaluator to use.
+- Tactic modifiers remain dict[str, Any].
+
 ## [0.5] - Foundation Cleanup
 
 ### Corrections from initial brief
