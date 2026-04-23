@@ -1,0 +1,31 @@
+# scenarios/checkpoint_1_strike_hard.scenario
+# Recreates the Checkpoint 1 and Checkpoint 2 Strike Hard killer test.
+# Expected: Strike Hard! -> Rook longsword reaction Strike, EV 8.55.
+
+[meta]
+name = Strike Hard Validation
+level = 1
+source = Checkpoint 1 ground truth
+description = Rook adjacent to Bandit1 in banner aura. Anthem active.
+
+[grid]
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . c g m . .
+. . . . i b . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+
+[banner]
+planted = true
+position = 5, 5
+
+[anthem]
+active = true
+
+[enemies]
+m1 name=Bandit1 ac=15 ref=5 fort=3 will=2

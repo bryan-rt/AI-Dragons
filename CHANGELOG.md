@@ -1,5 +1,36 @@
 # Changelog
 
+## [3.0] - Checkpoint 3: Scenario Loading
+
+### New module: sim/party.py
+- Moved factories and equipment constants from tests/fixtures.py.
+- Added TOKEN_TO_FACTORY, COMMANDER_TOKEN, SQUADMATE_TOKENS.
+- tests/fixtures.py becomes a re-export shim for backward compatibility.
+
+### New module: sim/scenario.py
+- Scenario (frozen dataclass) bundling grid, banner, anthem, party, enemies.
+- parse_scenario(text) and load_scenario(path) functions.
+- ScenarioParseError for all parsing failures.
+- Scenario.build_tactic_context() produces a ready-to-evaluate TacticContext
+  with GridSpatialQueries wired in.
+
+### New scenario: scenarios/checkpoint_1_strike_hard.scenario
+- Canonical end-to-end validation scenario.
+- Load + evaluate produces EV 8.55, identical to Checkpoints 1 and 2.
+
+### File format
+- Section-based text format (.scenario extension): [meta], [grid],
+  [banner], [anthem], [enemies]. Comments via leading #.
+- [banner] section authoritative over grid B/* tokens; grid token fallback.
+- Commander token ('c') required; squadmate tokens optional.
+- Enemy tokens use auto-numbered form (m1, m2, M1).
+
+### Validation
+- Missing [grid] -> ScenarioParseError
+- Missing commander -> ScenarioParseError
+- Enemy token mismatch (grid vs [enemies]) -> ScenarioParseError
+- Invalid integer/boolean -> ScenarioParseError
+
 ## [2.0] - Checkpoint 2: Grid and Spatial Reasoning
 
 ### Foundation refactor
