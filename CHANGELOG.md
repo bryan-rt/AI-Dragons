@@ -1,5 +1,43 @@
 # Changelog
 
+## [4.0] - Checkpoint 4: Defensive Value Computation
+
+### Correctness fix
+- Planted banner aura expands to 40-ft burst (was hardcoded 30 ft).
+  (AoN: https://2e.aonprd.com/Feats.aspx?ID=7796)
+- GridSpatialQueries.is_in_banner_aura now uses 40 ft when planted,
+  30 ft when carried. `banner_planted` is now a required constructor param.
+
+### EnemyState offensive stats
+- Added attack_bonus, damage_dice ("NdM" format), damage_bonus,
+  num_attacks_per_turn fields. All optional; empty damage_dice = no offense.
+- Scenario parser accepts atk=, dmg=, dmg_bonus=, attacks= in [enemies].
+
+### New math helpers (pf2e/combat_math.py)
+- plant_banner_temp_hp(level): 4*(1+level//4)
+  (AoN: https://2e.aonprd.com/Feats.aspx?ID=7796)
+- guardians_armor_resistance(level): 1+level//2
+  (AoN: https://2e.aonprd.com/Classes.aspx?ID=67)
+- expected_incoming_damage(attacker, target, attack_number): enemy
+  Strike EV with MAP, target AC, Guardian's Armor resistance
+- expected_enemy_turn_damage(attacker, target): sum across attacks
+- temp_hp_ev(temp_hp, expected_damage): min(temp_hp, damage)
+
+### Tactic evaluator updates
+- Gather to Me computes defensive EV: temp HP for allies entering
+  planted-banner burst + damage prevented by leaving enemy reach.
+- Defensive Retreat computes defensive EV: damage prevented by
+  allies Stepping out of enemy reach.
+
+### New function: intercept_attack_ev
+- Standalone helper for Rook's Intercept Attack (Guardian reaction).
+  Not wired into tactic evaluators — Checkpoint 5 will call it.
+  (AoN: https://2e.aonprd.com/Actions.aspx?ID=3305)
+
+### TacticResult additions
+- damage_prevented_sources: dict[str, float] with canonical keys
+  (plant_banner_temp_hp, gather_reposition, retreat_steps, etc.)
+
 ## [3.0] - Checkpoint 3: Scenario Loading
 
 ### New module: sim/party.py

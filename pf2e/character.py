@@ -119,10 +119,11 @@ class CombatantState:
 
 @dataclass
 class EnemyState:
-    """Enemy combatant with position and mutable conditions.
+    """Enemy combatant with position, conditions, and offensive profile.
 
-    Richer than combat_math.EnemyTarget — adds position and conditions
-    for use in tactic evaluation and spatial queries.
+    Used in tactic evaluation and spatial queries. Offensive stats
+    (attack_bonus, damage_dice, etc.) are optional — empty damage_dice
+    means the enemy has no modeled offensive capability.
     """
     name: str
     ac: int
@@ -130,3 +131,8 @@ class EnemyState:
     position: tuple[int, int]
     off_guard: bool = False
     prone: bool = False
+    # Offensive stats for defensive EV computation (Checkpoint 4)
+    attack_bonus: int = 0
+    damage_dice: str = ""          # e.g., "1d8"; empty = no modeled offense
+    damage_bonus: int = 0
+    num_attacks_per_turn: int = 2

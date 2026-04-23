@@ -24,7 +24,11 @@ from pf2e.combat_math import (
     class_dc,
     effective_speed,
     enumerate_d20_outcomes,
+    expected_enemy_turn_damage,
     expected_strike_damage,
+    guardians_armor_resistance,
+    plant_banner_temp_hp,
+    temp_hp_ev,
 )
 from pf2e.equipment import EquippedWeapon
 from pf2e.types import SaveType
@@ -165,6 +169,11 @@ class TacticResult:
 
     # Count of squadmates who can actually respond
     squadmates_responding: int = 0
+
+    # Breakdown of defensive EV sources (Checkpoint 4).
+    # Canonical keys: plant_banner_temp_hp, guardians_armor_resistance,
+    #   intercept_attack, gather_reposition, retreat_steps
+    damage_prevented_sources: dict[str, float] = field(default_factory=dict)
 
     @property
     def net_value(self) -> float:
@@ -364,12 +373,13 @@ def _evaluate_reaction_stride(
     defn: TacticDefinition,
     ctx: TacticContext,
 ) -> TacticResult:
-    """Gather to Me! — all squadmates Stride toward banner aura.
+    """Gather to Me! — allies Stride toward banner aura.
 
-    Always eligible. Value is purely defensive (Checkpoint 4).
-    Tracks which squadmates can actually respond (have reactions).
-
+    Defensive value from:
+    1. Allies entering the banner burst gain temp HP (if planted)
+    2. Allies leaving enemy reach prevent expected damage
     (AoN: https://2e.aonprd.com/Tactics.aspx?ID=2)
+    (AoN: https://2e.aonprd.com/Feats.aspx?ID=7796 — temp HP source)
     """
     will_respond: list[str] = []
     cannot_respond: list[str] = []
@@ -384,6 +394,32 @@ def _evaluate_reaction_stride(
     total = len(ctx.squadmates)
     responding = len(will_respond)
 
+    # Compute defensive EV
+    temp_hp_total = 0.0
+    reposition_total = 0.0
+    temp_hp_per_ally = (
+        plant_banner_temp_hp(ctx.commander.character.level)
+        if ctx.banner_planted else 0
+    )
+
+    for sq in ctx.squadmates:
+        if sq.character.name not in will_respond:
+            continue
+        # (1) Temp HP for allies entering banner aura
+        in_aura = ctx.spatial.is_in_banner_aura(sq.character.name)
+        if not in_aura and ctx.banner_planted:
+            dmg = _expected_damage_to_ally(sq, ctx)
+            temp_hp_total += temp_hp_ev(temp_hp_per_ally, dmg)
+        # (2) Damage prevented by leaving enemy reach
+        reposition_total += _damage_prevented_by_reposition(sq, ctx)
+
+    total_avoided = temp_hp_total + reposition_total
+    sources: dict[str, float] = {}
+    if temp_hp_total > 0:
+        sources["plant_banner_temp_hp"] = temp_hp_total
+    if reposition_total > 0:
+        sources["gather_reposition"] = reposition_total
+
     no_react_note = ""
     if cannot_respond:
         names = ", ".join(cannot_respond)
@@ -392,9 +428,10 @@ def _evaluate_reaction_stride(
 
     justification = (
         f"Gather to Me! \u2192 {responding} of {total} squadmates "
-        f"Stride toward banner aura as reactions "
-        f"({defn.action_cost} action){no_react_note}. "
-        f"Defensive value pending Checkpoint 4."
+        f"Stride toward banner aura ({defn.action_cost} action)"
+        f"{no_react_note}. "
+        f"Defensive EV: {total_avoided:.2f} "
+        f"(temp HP: {temp_hp_total:.2f}, reposition: {reposition_total:.2f})."
     )
 
     return TacticResult(
@@ -402,8 +439,10 @@ def _evaluate_reaction_stride(
         action_cost=defn.action_cost,
         eligible=True,
         expected_damage_dealt=0.0,
+        expected_damage_avoided=total_avoided,
         justification=justification,
         squadmates_responding=responding,
+        damage_prevented_sources=sources,
     )
 
 
@@ -508,12 +547,11 @@ def _evaluate_free_step(
     defn: TacticDefinition,
     ctx: TacticContext,
 ) -> TacticResult:
-    """Defensive Retreat — placeholder evaluator.
+    """Defensive Retreat — allies Step up to 3 times as free actions.
 
-    Allies Step up to 3 times as free actions (not reactions) away
-    from enemies. Full evaluation requires spatial reasoning
-    (Checkpoint 2) and defensive value computation (Checkpoint 4).
-
+    Defensive value: damage prevented by each ally Stepping out of
+    enemy reach. 3 x 5 ft = 15 ft total movement; sufficient to
+    clear 5-ft reach (1 Step) and 10-ft reach (2 Steps).
     (AoN: https://2e.aonprd.com/Tactics.aspx?ID=1)
     """
     any_in_aura = any(
@@ -528,16 +566,28 @@ def _evaluate_free_step(
             ineligibility_reason="No squadmates in banner aura.",
         )
 
+    retreat_total = 0.0
+    for sq in ctx.squadmates:
+        if not ctx.spatial.is_in_banner_aura(sq.character.name):
+            continue
+        retreat_total += _damage_prevented_by_reposition(sq, ctx)
+
+    sources: dict[str, float] = {}
+    if retreat_total > 0:
+        sources["retreat_steps"] = retreat_total
+
     return TacticResult(
         tactic_name=defn.name,
         action_cost=defn.action_cost,
         eligible=True,
         expected_damage_dealt=0.0,
+        expected_damage_avoided=retreat_total,
         justification=(
             f"Defensive Retreat \u2192 Squadmates Step away from enemies "
             f"({defn.action_cost} actions). "
-            f"Defensive value pending Checkpoint 4."
+            f"Defensive EV: {retreat_total:.2f}."
         ),
+        damage_prevented_sources=sources,
     )
 
 
@@ -562,6 +612,89 @@ def _evaluate_passive_buff(
             f"No vertical terrain in scenario; situational value not computed."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Defensive helpers (Checkpoint 4)
+# ---------------------------------------------------------------------------
+
+def _expected_damage_to_ally(
+    ally: CombatantState, ctx: TacticContext,
+) -> float:
+    """Expected damage to this ally this round from all enemies.
+
+    Heuristic: each enemy attacks their nearest PC. Sum damage from
+    enemies whose nearest target is this ally.
+    """
+    total = 0.0
+    for enemy in ctx.enemies:
+        if not enemy.damage_dice:
+            continue
+        if _nearest_pc_to_enemy(enemy, ctx) == ally.character.name:
+            total += expected_enemy_turn_damage(enemy, ally)
+    return total
+
+
+def _nearest_pc_to_enemy(enemy: EnemyState, ctx: TacticContext) -> str:
+    """Which PC (commander or squadmate) is nearest to this enemy?"""
+    candidates = [ctx.commander] + list(ctx.squadmates)
+    min_dist = float("inf")
+    nearest_name = ""
+    for pc in candidates:
+        dist = ctx.spatial.distance_ft(enemy.name, pc.character.name)
+        if dist < min_dist:
+            min_dist = dist
+            nearest_name = pc.character.name
+    return nearest_name
+
+
+def _damage_prevented_by_reposition(
+    ally: CombatantState, ctx: TacticContext,
+) -> float:
+    """Damage prevented if ally repositions away from threatening enemies.
+
+    Sums expected damage from enemies within 10 ft whose nearest target
+    is this ally. Assumes repositioning moves the ally out of reach.
+    """
+    total = 0.0
+    for enemy in ctx.enemies:
+        if not enemy.damage_dice:
+            continue
+        if _nearest_pc_to_enemy(enemy, ctx) != ally.character.name:
+            continue
+        dist = ctx.spatial.distance_ft(enemy.name, ally.character.name)
+        if dist <= 10:
+            total += expected_enemy_turn_damage(enemy, ally)
+    return total
+
+
+def intercept_attack_ev(
+    rook: CombatantState,
+    ally: CombatantState,
+    enemies: list[EnemyState],
+    spatial: SpatialQueries,
+) -> float:
+    """EV of Rook using Intercept Attack to protect a specific ally.
+
+    Checks eligibility (guardian reaction, 10-ft range, Step feasibility),
+    returns resistance savings for one intercepted hit.
+    Not wired into any tactic evaluator — Intercept Attack is a Guardian
+    reaction, not a tactic. Checkpoint 5's turn evaluator will call this.
+
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=3305)
+    (AoN: https://2e.aonprd.com/Classes.aspx?ID=67 — Guardian's Armor)
+    """
+    if rook.guardian_reactions_available <= 0:
+        return 0.0
+    if spatial.distance_ft(rook.character.name, ally.character.name) > 10:
+        return 0.0
+    if not spatial.can_reach_with_stride(
+        rook.character.name, ally.character.name, 5,
+    ):
+        return 0.0
+    if not any(e.damage_dice for e in enemies):
+        return 0.0
+    return float(guardians_armor_resistance(rook.character.level))
 
 
 # ---------------------------------------------------------------------------

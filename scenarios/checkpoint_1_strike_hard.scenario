@@ -28,4 +28,4 @@ position = 5, 5
 active = true
 
 [enemies]
-m1 name=Bandit1 ac=15 ref=5 fort=3 will=2
+m1 name=Bandit1 ac=15 ref=5 fort=3 will=2 atk=7 dmg=1d8 dmg_bonus=3 attacks=2

@@ -204,7 +204,7 @@ class TestGatherToMe:
         result = evaluate_tactic(GATHER_TO_ME, base_context)
         assert result.eligible
         assert result.expected_damage_dealt == 0.0
-        assert "pending" in result.justification.lower()
+        assert "defensive ev" in result.justification.lower()
 
     def test_response_count_all(self, base_context: TacticContext) -> None:
         """All 3 squadmates have reactions → 3 of 3."""
@@ -342,7 +342,7 @@ class TestDefensiveRetreat:
         result = evaluate_tactic(DEFENSIVE_RETREAT, base_context)
         assert result.eligible
         assert result.expected_damage_dealt == 0.0
-        assert "pending" in result.justification.lower()
+        assert "defensive ev" in result.justification.lower()
 
     def test_ineligible_no_squadmate_in_aura(
         self, base_context: TacticContext,

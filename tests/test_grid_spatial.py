@@ -60,9 +60,10 @@ class TestGridSpatialCorrectness:
             squadmates=[rook],
             enemies=[bandit],
             banner_position=(5, 5),
+            banner_planted=True,
         )
 
-        # Rook is 5 ft from banner → in 30-ft aura
+        # Rook is 5 ft from banner → in aura
         assert spatial.is_in_banner_aura("Rook") is True
         # Bandit adjacent to Rook, longsword reach 5 ft
         assert spatial.enemies_reachable_by("Rook") == ["Bandit1"]
@@ -85,6 +86,7 @@ class TestGridSpatialCorrectness:
             squadmates=[],
             enemies=[bandit_near, bandit_far, bandit_diag],
             banner_position=None,
+            banner_planted=False,
         )
 
         reachable = spatial.enemies_reachable_by("Aetregan")
@@ -106,6 +108,7 @@ class TestGridSpatialCorrectness:
             squadmates=[erisen],
             enemies=[],
             banner_position=(0, 0),
+            banner_planted=True,
         )
         # distance_ft((0,0),(15,15)) = lots (15 diag) >> 30 ft
         assert spatial.is_in_banner_aura("Erisen") is False
@@ -121,6 +124,7 @@ class TestGridSpatialCorrectness:
             squadmates=[],
             enemies=[],
             banner_position=(0, 0),
+            banner_planted=True,
         )
         assert spatial.is_in_banner_aura("Nobody") is False
         assert spatial.enemies_reachable_by("Nobody") == []
@@ -204,6 +208,7 @@ class TestPathfindingDetour:
             squadmates=[ally],
             enemies=[blocker, target],
             banner_position=None,
+            banner_planted=False,
         )
         # Rook half-speed = 10 ft
         assert spatial.can_reach_with_stride("Rook", "Target", 10) is True
@@ -224,6 +229,7 @@ class TestPathfindingDetour:
             squadmates=[ally],
             enemies=[blocker, target],
             banner_position=None,
+            banner_planted=False,
         )
         assert spatial.can_reach_with_stride("Rook", "Target", 5) is False
 
@@ -257,6 +263,7 @@ class TestSurroundedTarget:
             squadmates=[ally],
             enemies=[target] + surrounders,
             banner_position=None,
+            banner_planted=False,
         )
         assert spatial.can_reach_with_stride("Rook", "Target", 999) is False
 
@@ -288,6 +295,7 @@ class TestDiagonalBypass:
             squadmates=[ally_a, ally_b],
             enemies=[target],
             banner_position=None,
+            banner_planted=False,
         )
         # One diagonal step (5 ft) to (2,4) or (4,4), both adjacent to target
         assert spatial.can_reach_with_stride("Rook", "Target", 5) is True

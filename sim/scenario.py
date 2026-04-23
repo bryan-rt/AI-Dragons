@@ -92,6 +92,7 @@ class Scenario:
             squadmates=list(self.squadmates),
             enemies=list(self.enemies),
             banner_position=self.banner_position,
+            banner_planted=self.banner_planted,
         )
         return TacticContext(
             commander=self.commander,
@@ -152,6 +153,10 @@ def _build_enemy(
             position=pos,
             off_guard=spec.get("off_guard", "false").lower() == "true",
             prone=spec.get("prone", "false").lower() == "true",
+            attack_bonus=int(spec.get("atk", "0")),
+            damage_dice=spec.get("dmg", ""),
+            damage_bonus=int(spec.get("dmg_bonus", "0")),
+            num_attacks_per_turn=int(spec.get("attacks", "2")),
         )
     except ValueError as e:
         raise ScenarioParseError(

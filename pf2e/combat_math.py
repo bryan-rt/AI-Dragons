@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pf2e.abilities import AbilityScores
-from pf2e.character import Character, CombatantState
+from pf2e.character import Character, CombatantState, EnemyState
 from pf2e.equipment import EquippedWeapon, Weapon
 from pf2e.proficiency import proficiency_bonus
 from pf2e.types import Ability, ProficiencyRank, SaveType
@@ -46,6 +46,109 @@ def melee_reach_ft(character: Character) -> int:
         if eq.weapon.is_melee and "reach" in eq.weapon.traits:
             max_reach = max(max_reach, 10)
     return max_reach
+
+
+# ---------------------------------------------------------------------------
+# Helper: defensive math (Checkpoint 4)
+# ---------------------------------------------------------------------------
+
+def plant_banner_temp_hp(level: int) -> int:
+    """Temp HP granted by Plant Banner feat per ally per round.
+
+    4 at level 1, +4 at level 4 and every 4 levels thereafter.
+    Temp HP renews each turn an ally starts within the burst.
+
+    Note: PF2e temp HP doesn't stack — allies take the highest active
+    source. For Checkpoint 4, Plant Banner is assumed to be the only
+    active temp HP source.
+    (AoN: https://2e.aonprd.com/Feats.aspx?ID=7796)
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2321 — temp HP rules)
+    """
+    return 4 * (1 + level // 4)
+
+
+def guardians_armor_resistance(level: int) -> int:
+    """Physical damage resistance from Guardian's Armor class feature.
+
+    Resistance = 1 + (level // 2). Applies while wearing medium/heavy armor.
+    (AoN: https://2e.aonprd.com/Classes.aspx?ID=67)
+    """
+    return 1 + level // 2
+
+
+def _has_guardians_armor(character: Character) -> bool:
+    """True if character has active Guardian's Armor.
+
+    Uses guardian_reactions > 0 as a Guardian-class proxy. Requires
+    medium or heavy armor (ac_bonus >= 4 as rough proxy).
+    """
+    if character.guardian_reactions == 0:
+        return False
+    if character.armor is None:
+        return False
+    return character.armor.ac_bonus >= 4
+
+
+def temp_hp_ev(temp_hp: int, expected_damage: float) -> float:
+    """EV of temp HP given expected incoming damage.
+
+    Absorbs min(temp_hp, expected_damage).
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2321)
+    """
+    return float(min(float(temp_hp), expected_damage))
+
+
+def expected_incoming_damage(
+    attacker: EnemyState,
+    target: CombatantState,
+    attack_number: int = 1,
+) -> float:
+    """Expected damage from one enemy Strike against a specific target.
+
+    Accounts for target's effective AC (raised shield, off-guard, frightened),
+    attacker's MAP, and Guardian's Armor resistance if applicable.
+    Returns 0.0 if attacker has no modeled damage (empty damage_dice).
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2187)
+    """
+    if not attacker.damage_dice:
+        return 0.0
+    ac = armor_class(target)
+    effective_bonus = attacker.attack_bonus + map_penalty(attack_number, agile=False)
+    outcomes = enumerate_d20_outcomes(effective_bonus, ac)
+    # Parse "NdM" format (e.g., "1d8", "2d6")
+    dice_str = attacker.damage_dice
+    if "d" in dice_str and dice_str[0].isdigit():
+        num_str, die_part = dice_str.split("d", 1)
+        num_dice = int(num_str)
+        hit_dmg = num_dice * die_average(f"d{die_part}") + attacker.damage_bonus
+    else:
+        hit_dmg = die_average(dice_str) + attacker.damage_bonus
+    crit_dmg = hit_dmg * 2
+    raw_ev = (
+        (outcomes.success / 20) * hit_dmg
+        + (outcomes.critical_success / 20) * crit_dmg
+    )
+    # Apply Guardian's Armor resistance (per-hit approximation)
+    if _has_guardians_armor(target.character):
+        resistance = guardians_armor_resistance(target.character.level)
+        hit_prob = (outcomes.success + outcomes.critical_success) / 20
+        raw_ev -= resistance * hit_prob
+        raw_ev = max(0.0, raw_ev)
+    return raw_ev
+
+
+def expected_enemy_turn_damage(
+    attacker: EnemyState,
+    target: CombatantState,
+) -> float:
+    """Total expected damage across an enemy's full turn of Strikes.
+
+    Sums across num_attacks_per_turn with escalating MAP.
+    """
+    total = 0.0
+    for i in range(1, attacker.num_attacks_per_turn + 1):
+        total += expected_incoming_damage(attacker, target, i)
+    return total
 
 
 # ---------------------------------------------------------------------------

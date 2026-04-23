@@ -35,9 +35,11 @@ class GridSpatialQueries:
         squadmates: list[CombatantState],
         enemies: list[EnemyState],
         banner_position: Pos | None,
+        banner_planted: bool,
     ) -> None:
         self._grid = grid_state
         self._banner_pos = banner_position
+        self._banner_planted = banner_planted
         self._positions: dict[str, Pos] = {}
         self._combatants: dict[str, CombatantState] = {}
         self._enemies_by_name: dict[str, EnemyState] = {}
@@ -73,19 +75,24 @@ class GridSpatialQueries:
             ctx.squadmates,
             ctx.enemies,
             ctx.banner_position,
+            banner_planted=ctx.banner_planted,
         )
 
     def is_in_banner_aura(self, name: str) -> bool:
-        """True if combatant is within the 30-ft banner emanation.
+        """True if combatant is within the banner aura.
 
-        (AoN: https://2e.aonprd.com/Rules.aspx?ID=3421 — banner aura)
+        Base aura: 30-ft emanation. When the banner is planted, the aura
+        expands to a 40-ft burst.
+        (AoN: https://2e.aonprd.com/Classes.aspx?ID=66 — base aura)
+        (AoN: https://2e.aonprd.com/Feats.aspx?ID=7796 — planted expansion)
         """
         if self._banner_pos is None:
             return False
         pos = self._positions.get(name)
         if pos is None:
             return False
-        return grid.distance_ft(pos, self._banner_pos) <= 30
+        radius = 40 if self._banner_planted else 30
+        return grid.distance_ft(pos, self._banner_pos) <= radius
 
     def enemies_reachable_by(self, name: str) -> list[str]:
         """List enemies within this combatant's melee weapon reach.
