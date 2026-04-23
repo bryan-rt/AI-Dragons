@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from pf2e.character import CombatantState
+from pf2e.character import CombatantState, EnemyState  # EnemyState re-exported
 from pf2e.combat_math import (
     attack_bonus,
     class_dc,
@@ -53,21 +53,6 @@ class TacticDefinition:
     granted_action: str      # key into _EVALUATORS dispatch table
     modifiers: dict[str, Any]
     prerequisites: tuple[str, ...]
-
-
-@dataclass
-class EnemyState:
-    """Enemy combatant with position and mutable conditions.
-
-    Richer than combat_math.EnemyTarget — adds position and conditions
-    for use in tactic evaluation.
-    """
-    name: str
-    ac: int
-    saves: dict[SaveType, int]
-    position: tuple[int, int]
-    off_guard: bool = False
-    prone: bool = False
 
 
 class SpatialQueries(Protocol):

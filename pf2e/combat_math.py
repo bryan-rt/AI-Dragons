@@ -31,6 +31,24 @@ def effective_speed(state: CombatantState) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Helper: melee reach
+# ---------------------------------------------------------------------------
+
+def melee_reach_ft(character: Character) -> int:
+    """Maximum melee reach across all equipped melee weapons.
+
+    Standard melee reach for Medium creatures is 5 ft. Weapons with
+    the reach trait extend this to 10 ft.
+    (AoN: https://2e.aonprd.com/Traits.aspx?ID=684 — reach trait)
+    """
+    max_reach = 5
+    for eq in character.equipped_weapons:
+        if eq.weapon.is_melee and "reach" in eq.weapon.traits:
+            max_reach = max(max_reach, 10)
+    return max_reach
+
+
+# ---------------------------------------------------------------------------
 # Helper: die average
 # ---------------------------------------------------------------------------
 

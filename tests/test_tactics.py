@@ -6,7 +6,7 @@ for all 5 folio tactics. Spatial queries are mocked via MockSpatialQueries.
 
 import pytest
 
-from pf2e.character import CombatantState
+from pf2e.character import CombatantState, EnemyState
 from pf2e.combat_math import expected_strike_damage
 from pf2e.equipment import EquippedWeapon
 from pf2e.tactics import (
@@ -15,7 +15,6 @@ from pf2e.tactics import (
     MOUNTAINEERING_TRAINING,
     STRIKE_HARD,
     TACTICAL_TAKEDOWN,
-    EnemyState,
     MockSpatialQueries,
     TacticContext,
     evaluate_all_prepared,

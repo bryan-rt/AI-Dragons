@@ -115,3 +115,18 @@ class CombatantState:
             status_bonus_attack=1 if anthem_active else 0,
             status_bonus_damage=1 if anthem_active else 0,
         )
+
+
+@dataclass
+class EnemyState:
+    """Enemy combatant with position and mutable conditions.
+
+    Richer than combat_math.EnemyTarget — adds position and conditions
+    for use in tactic evaluation and spatial queries.
+    """
+    name: str
+    ac: int
+    saves: dict[SaveType, int]
+    position: tuple[int, int]
+    off_guard: bool = False
+    prone: bool = False

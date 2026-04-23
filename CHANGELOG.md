@@ -1,5 +1,45 @@
 # Changelog
 
+## [2.0] - Checkpoint 2: Grid and Spatial Reasoning
+
+### Foundation refactor
+- **EnemyState** moved from `pf2e/tactics.py` to `pf2e/character.py`.
+  Re-exported from tactics for backward compatibility.
+- **melee_reach_ft(character)** added to `pf2e/combat_math.py`.
+  Returns 10 ft if any equipped melee weapon has the reach trait, else 5 ft.
+  (AoN: https://2e.aonprd.com/Traits.aspx?ID=684)
+
+### New package: `sim/`
+- `sim/grid.py` — Pos alias, GridState dataclass, ASCII parse/render,
+  geometry helpers (distance_ft with 5/10 diagonal, chebyshev_squares,
+  is_adjacent, is_within_reach with 10-ft exception, squares_in_emanation),
+  and BFS pathfinding (shortest_movement_cost).
+- `sim/grid_spatial.py` — GridSpatialQueries implementing the
+  SpatialQueries Protocol. Precomputes occupied-squares set at
+  construction. Banner square is passable (item, not creature).
+
+### Verified PF2e rules
+- Grid cell = 5 ft (https://2e.aonprd.com/Rules.aspx?ID=2356)
+- Diagonal movement 5/10/5/10 (https://2e.aonprd.com/Rules.aspx?ID=2357)
+- Area measurement follows movement rules (https://2e.aonprd.com/Rules.aspx?ID=2384)
+- 10-ft reach diagonal exception (https://2e.aonprd.com/Rules.aspx?ID=2379)
+- Emanation geometry (https://2e.aonprd.com/Rules.aspx?ID=2387)
+- Moving through creature spaces (https://2e.aonprd.com/Rules.aspx?ID=2360)
+- Banner 30-ft emanation (https://2e.aonprd.com/Rules.aspx?ID=3421)
+
+### Design decisions
+- Pos is a tuple[int, int] type alias, local to sim/. Not propagated
+  to pf2e/ to avoid churn.
+- BFS uses uniform 5-ft step cost (not strict 5/10 alternation).
+  Underestimates long diagonal paths by up to ~15%. Strict 5/10 is
+  preserved for point-to-point queries (distance_ft, emanations, aura).
+- Movement cannot pass through ANY occupied square (enemies or allies).
+  Stricter than PF2e RAW (which allows willing-ally pass-through).
+  Chosen to bias toward false negatives in tactical advice.
+- GridState holds terrain only. Combatant positions live on
+  CombatantState/EnemyState. GridSpatialQueries resolves names to
+  positions at construction time.
+
 ## [1.0] - Checkpoint 1: Tactic Dispatcher
 
 ### Foundation additions
