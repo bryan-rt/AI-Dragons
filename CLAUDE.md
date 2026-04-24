@@ -1,0 +1,107 @@
+# CLAUDE.md — CLI Agent Context
+
+You are working on a Pathfinder 2e Remaster tactical combat simulator. This document is loaded automatically when you start work in this repo.
+
+## Quick Context
+
+- **Language:** Python 3.10+
+- **Dependencies:** Standard library only, plus pytest for tests
+- **Run tests:** `pytest tests/ -v` from repo root
+- **Current test count:** See `.claude/context/current_state.md` for latest
+- **Main branches:** `main` (only branch); work directly on it
+
+## What to Read First
+
+Before making any changes, read these files in order:
+
+1. **This file (`CLAUDE.md`)** — you're already reading it
+2. **`.claude/context/current_state.md`** — current checkpoint, test count, active work
+3. **`.claude/context/conventions.md`** — code conventions
+4. **`.claude/context/architecture.md`** — module layout and layering rules
+5. **`.claude/context/pitfalls.md`** — gotchas accumulated from past checkpoints
+
+If working on a specific brief:
+- **`.claude/briefs/`** contains all briefs delivered so far
+- Find the relevant Pass 3 brief (e.g., `checkpoint_5_1_pass_3a_brief.md`)
+- Follow the brief's implementation steps and validation checklist exactly
+
+## Standing Rules
+
+1. **Verify against AoN.** Any PF2e rule you implement must link to https://2e.aonprd.com. Use web_fetch or web_search to verify when uncertain.
+
+2. **Read existing code before editing.** Use `view` to understand structure before making changes. The briefs specify which files to read.
+
+3. **Tests mirror production.** Test file `test_X.py` tests module `X.py`. Add tests to existing test files where appropriate; create new ones as briefs specify.
+
+4. **Follow the brief exactly.** If a brief says "15 action types," don't add a 16th. If it says "defer to CP5.2," don't implement it now. Scope discipline is essential.
+
+5. **Standard library only.** No third-party dependencies in production code (pytest in tests is fine).
+
+6. **Docstrings cite AoN URLs.** Every non-obvious rule gets a URL in the function docstring or inline comment.
+
+7. **No circular imports.** `pf2e/` does not import from `sim/`. Ever.
+
+8. **Commit after passing tests.** Don't commit broken code. Run `pytest tests/ -v` before every commit.
+
+## Project Structure
+
+```
+pf2e/              # Pure rules engine
+  types.py         # Enums (Ability, ProficiencyRank, WeaponCategory, Skill, etc.)
+  abilities.py     # AbilityScores
+  proficiency.py   # proficiency_bonus()
+  equipment.py     # Weapon, ArmorData, Shield
+  character.py     # Character, CombatantState, EnemyState
+  combat_math.py   # All derivation functions
+  tactics.py       # Tactic system + evaluators
+  actions.py       # (CP5.1+) Action types and dataclasses
+  damage_pipeline.py # (CP5.1+) Damage resolution
+
+sim/               # Simulator layer (uses pf2e/)
+  grid.py          # Grid geometry, parsing, BFS
+  grid_spatial.py  # GridSpatialQueries
+  party.py         # Character factories for the canonical party
+  scenario.py      # Scenario file loading
+
+scenarios/         # .scenario files (text format)
+characters/        # Character JSON files (for Phase B importer)
+tests/             # Tests mirror production structure
+.claude/           # Claude context and brief history
+```
+
+See `.claude/context/architecture.md` for the full module layout and layering rules.
+
+## Workflow
+
+When given a Pass 3 brief:
+
+1. Read the brief end-to-end before starting
+2. Read the files listed in "Pre-implementation: read existing code"
+3. Follow the implementation steps in order
+4. Write the tests specified in the brief
+5. Run `pytest tests/ -v` — all tests must pass
+6. Verify the killer regression: Strike Hard EV 8.55 from disk must still hold
+7. Update `CHANGELOG.md` with the brief's CHANGELOG section
+8. Update `.claude/context/current_state.md` with new test count and status
+9. Commit with a clear message referencing the checkpoint (e.g., "CP5.1 Pass 3a: foundation implementation")
+10. Push to GitHub
+
+## If You Find Discrepancies
+
+If something in a brief conflicts with verified PF2e rules, or existing code behaves differently than expected, **stop and flag it** rather than guessing. The user can clarify. This has happened several times (Wis 11→12 correction, mortar EV 5.95 vs 5.60, banner aura expansion) and catching it early is always better than implementing wrong code.
+
+## Killer Regression Test
+
+The single most important test is in `tests/test_scenario.py::TestKillerValidation::test_strike_hard_from_disk`. It verifies that loading the canonical scenario and evaluating Strike Hard produces EV 8.55. This test must pass after every checkpoint. If you break it, fix before moving on.
+
+## Key Numbers to Remember
+
+- **EV 8.55** — Strike Hard with Anthem (regression anchor)
+- **Aetregan:** Cha 10, Perception expert, Scorpion Whip, ancestry_hp 6, class_hp 8, max HP 15
+- **Rook:** Automaton Guardian, max HP 23, guardian_reactions 1
+- **Dalai:** Human Bard, max HP 17, Cha 18
+- **Erisen:** Elf Inventor, max HP 16, Speed 35
+
+## Contact
+
+The project owner is Bryan (GitHub: bryan-rt). Main work happens in Claude conversations (strategic planning) and CLI agent sessions (implementation). The repo is public at https://github.com/bryan-rt/AI-Dragons.
