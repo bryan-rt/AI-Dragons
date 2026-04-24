@@ -139,6 +139,61 @@ The single most important test is in `tests/test_scenario.py::TestKillerValidati
 - **Dalai:** Human Bard, max HP 17, Cha 18
 - **Erisen:** Elf Inventor, max HP 16, Speed 35
 
+## `/brief` Command
+
+When the user types `/brief <filename>`, execute the brief file using the three-pass system.
+
+### How to resolve the file path
+
+1. If `<filename>` is an absolute path or starts with `.claude/`, use it directly
+2. Otherwise, prepend `.claude/briefs/` — e.g., `/brief checkpoint_5_1_pass_3a_brief.md` reads `.claude/briefs/checkpoint_5_1_pass_3a_brief.md`
+
+### How to determine the pass
+
+Read the brief file. Identify which pass it is from:
+- **Pass 1**: Title/header contains "Pass 1", "Architectural Plan", or "Planning". The brief asks for a plan, not code.
+- **Pass 2**: Title/header contains "Pass 2", "Corrections", or "Refinement". The brief provides corrections to a prior plan.
+- **Pass 3**: Title/header contains "Pass 3", "Implementation", or "Execution". The brief provides step-by-step implementation instructions.
+
+### Execution by pass type
+
+**Pass 1 — Planning:**
+1. Read the brief end-to-end
+2. Read all files listed in the brief's "read existing code" or "pre-implementation" section
+3. Read `.claude/context/current_state.md`, `.claude/context/architecture.md`, and `.claude/context/pitfalls.md`
+4. Research any PF2e rules mentioned using web search/fetch against Archives of Nethys (https://2e.aonprd.com/)
+5. Enter planning mode — do NOT write code
+6. Produce a high-level architectural plan covering everything the brief asks for
+7. Surface concerns, ambiguities, open questions, and anything marked UNVERIFIED
+8. Wait for user review before proceeding
+
+**Pass 2 — Refinement:**
+1. Read the brief end-to-end
+2. Apply each correction listed in the brief to the prior plan
+3. Research any new AoN citations needed
+4. Finalize design decisions with concrete field names, signatures, and test expectations
+5. Flag any remaining blockers
+6. Output the refined plan and wait for user review
+
+**Pass 3 — Implementation:**
+1. Read the brief end-to-end before writing any code
+2. Read every file listed in "Pre-implementation: read existing code"
+3. Follow the implementation steps in the exact order given
+4. Write tests as specified
+5. Run `pytest tests/ -v` — all tests must pass
+6. Verify the killer regression (Strike Hard EV 8.55) still holds
+7. Update `CHANGELOG.md`
+8. Commit with a clear checkpoint message
+9. Push to GitHub
+
+### Example usage
+
+```
+/brief checkpoint_5_1_pass_3a_brief.md
+```
+
+This reads `.claude/briefs/checkpoint_5_1_pass_3a_brief.md`, identifies it as Pass 3, and executes the implementation.
+
 ## Contact
 
 The project owner is Bryan (GitHub: bryan-rt). Main work happens in Claude conversations (strategic planning) and CLI agent sessions (implementation). The repo is public at https://github.com/bryan-rt/AI-Dragons.
