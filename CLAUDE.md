@@ -141,21 +141,22 @@ The single most important test is in `tests/test_scenario.py::TestKillerValidati
 
 ## `/brief` Command
 
-When the user types `/brief <filename>`, execute the brief file using the three-pass system.
+When the user types `/brief` followed by the brief content (pasted inline), do the following:
 
-### How to resolve the file path
+### Step 1: Save the brief
 
-1. If `<filename>` is an absolute path or starts with `.claude/`, use it directly
-2. Otherwise, prepend `.claude/briefs/` — e.g., `/brief checkpoint_5_1_pass_3a_brief.md` reads `.claude/briefs/checkpoint_5_1_pass_3a_brief.md`
+1. Extract the checkpoint name from the brief's title/header (e.g., "Checkpoint 5.1 Pass 3b" → `checkpoint_5_1_pass_3b_brief.md`)
+2. Write the full pasted content to `.claude/briefs/<extracted_name>.md`
+3. Confirm the file was saved
 
-### How to determine the pass
+### Step 2: Determine the pass type
 
-Read the brief file. Identify which pass it is from:
+Identify which pass it is from the brief content:
 - **Pass 1**: Title/header contains "Pass 1", "Architectural Plan", or "Planning". The brief asks for a plan, not code.
 - **Pass 2**: Title/header contains "Pass 2", "Corrections", or "Refinement". The brief provides corrections to a prior plan.
 - **Pass 3**: Title/header contains "Pass 3", "Implementation", or "Execution". The brief provides step-by-step implementation instructions.
 
-### Execution by pass type
+### Step 3: Execute the brief
 
 **Pass 1 — Planning:**
 1. Read the brief end-to-end
@@ -189,10 +190,14 @@ Read the brief file. Identify which pass it is from:
 ### Example usage
 
 ```
-/brief checkpoint_5_1_pass_3a_brief.md
+/brief
+# Checkpoint 5.1 Pass 3b: Algorithms — Implementation
+
+## Context
+...the full brief content pasted here...
 ```
 
-This reads `.claude/briefs/checkpoint_5_1_pass_3a_brief.md`, identifies it as Pass 3, and executes the implementation.
+This saves the brief to `.claude/briefs/checkpoint_5_1_pass_3b_brief.md`, identifies it as Pass 3, and executes the implementation.
 
 ## Contact
 
