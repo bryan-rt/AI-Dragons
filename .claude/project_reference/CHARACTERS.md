@@ -51,11 +51,11 @@ Skill proficiencies (trained, per JSON):
 Skill proficiencies (untrained):
 - Athletics, Deception, Diplomacy, Intimidation, Medicine, Performance
 
-Note: Deception is untrained, but Deceptive Tactics lets her use Warfare Lore (+8) in place of Deception for Create a Diversion and Feint.
+Note: Deception is untrained, but Deceptive Tactics lets her use Warfare Lore (+7) in place of Deception for Create a Diversion and Feint.
 
 Lores (trained):
-- Warfare (+8 = Int +4 + trained +3 + level 1)
-- Deity (+8 = same)
+- Warfare (+7 = Int +4 + trained proficiency +3 [rank bonus 2 + level 1])
+- Deity (+7 = same)
 
 Languages: Common, Dwarven, Elven, Necril, Osarian, Petran.
 
@@ -88,7 +88,7 @@ Features:
 - Ever Ready (Guardian reaction refresh, once per turn)
 
 Skills (grounded defaults, trained):
-- Athletics (+8 = Str +4 + trained +3 + level 1)
+- Athletics (+7 = Str +4 + trained proficiency +3 [rank bonus 2 + level 1])
 - Intimidation, Society, Crafting
 
 ### Dalai Alpaca (Bard) — Squadmate

@@ -1,6 +1,6 @@
 # Roadmap
 
-Status at time of last update: CP5.1 Pass 3a complete (255 tests). CP4.6 and CP4.7 restructuring/methodology work complete. CP5.1 Pass 3b pending brief.
+Status at time of last update: CP5.1.3a complete (255 tests). CP4.6 and CP4.7 restructuring/methodology work complete. CP5.1.3b pending brief.
 
 Update this document whenever a checkpoint ships or a major decision shifts the plan.
 
@@ -66,7 +66,7 @@ Implementation: 199 → 207 tests.
 - Canonical scenario updated to `planted = false` (Aetregan doesn't have Plant Banner at L1)
 - Strike Hard EV 8.55 regression preserved
 
-### CP5.1 Pass 3a — Foundation
+### CP5.1.3a — Foundation
 Implementation: 207 → 255 tests.
 - `Skill` enum (16 skills) and `SKILL_ABILITY` lookup in `pf2e/types.py`
 - `Character` extensions: `skill_proficiencies`, `lores`, feat-presence flags
@@ -97,11 +97,11 @@ Implementation: 207 → 255 tests.
 
 ## In Progress
 
-CP5.1 Pass 3b — Algorithms (pending brief).
+CP5.1.3b — Algorithms (pending brief).
 
 ## Pending Checkpoints
 
-### CP5.1 Pass 3b — Algorithms
+### CP5.1.3b — Algorithms
 - `RoundState` with shallow-clone + frozenset conditions
 - Hybrid state threading: EV-collapse by default, branching at kill/drop crossings with 5% threshold
 - `sim/search.py`: beam search K=50/20/10 depth 3
@@ -110,7 +110,7 @@ CP5.1 Pass 3b — Algorithms (pending brief).
 - Initiative rolling from Perception, seeded
 - Damage pipeline in `pf2e/damage_pipeline.py` (strict PF2e resolution order)
 
-### CP5.1 Pass 3c — Actions
+### CP5.1.3c — Actions
 Fifteen action evaluators:
 1. STRIDE (with 5-category destination heuristic + "adjacent to wounded ally")
 2. STEP

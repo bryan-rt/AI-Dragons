@@ -164,6 +164,38 @@ Major architectural decisions with rationale. Append as new decisions are made.
 
 **Decided:** Project setup (this conversation).
 
+## D21: RoundState as frozen snapshots
+
+**Decision:** `RoundState`, `CombatantSnapshot`, `EnemySnapshot` are frozen dataclasses. Branching creates new instances via `dataclasses.replace()` with targeted dict updates. Underlying `Character` is shared.
+
+**Rationale:** Enables cheap hybrid branching (dict copy + one frozen construction) without deep-copy overhead. Type system enforces "no accidental mutation across branches."
+
+**Decided:** CP5.1.3b Pass 1; ratified Pass 2.
+
+## D22: Kill/drop branching collapses to two worlds per target
+
+**Decision:** For each action, crossing outcomes per-target are summed into P(event). If P(event) ≥ 5%, spawn exactly two child states: event-world (target HP=0) and no-event-world (non-crossing outcomes EV-folded). Multi-target spawns one branch per distinct alive/dead vector with ≥ 5% joint probability.
+
+**Rationale:** Pass 1 original proposal branched per-outcome, producing redundant identical states. Two-world collapse preserves correctness while halving the tree.
+
+**Decided:** CP5.1.3b Pass 2.
+
+## D23: Reactions as full search-branching (C2)
+
+**Decision:** Shield Block and Intercept Attack are first-class branching points in the search tree. Each eligible reaction creates a decision point expanding the triggering Strike's outcome set. Timing target: 15s per simulated round. Escape hatch: C1 commit-based if timing target missed.
+
+**Rationale:** Treating reactions as automatic greedy policies throws away tactical value. Full branching captures "save Shield Block for the crit" decisions. Branching factor bounded by outcome-pruning threshold.
+
+**Decided:** CP5.1.3b Pass 2.
+
+## D24: Temp HP absorption not counted as damage_taken in scoring
+
+**Decision:** Scoring's `damage_taken` component counts only real HP loss. Temp HP consumption is not reflected in the scoring penalty.
+
+**Rationale:** Temp HP is a renewable resource (refreshes each round from Plant Banner). Counting consumption as "damage" would double-penalize.
+
+**Decided:** CP5.1.3b Pass 2.
+
 ## Non-Decisions (deferred)
 
 These came up but haven't been resolved. Revisit when relevant:

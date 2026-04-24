@@ -23,7 +23,7 @@ When citing rules in new code, verify by visiting the URL or searching AoN. Don'
 | HP rules (ancestry + class + Con × level) | https://2e.aonprd.com/Rules.aspx?ID=2145 |
 | Weapon specialization | https://2e.aonprd.com/Rules.aspx?ID=2191 |
 | Reactions | https://2e.aonprd.com/Rules.aspx?ID=2432 |
-| Initiative | https://2e.aonprd.com/Rules.aspx?ID=2127 |
+| Initiative | https://2e.aonprd.com/Rules.aspx?ID=2423 |
 
 ## Grid and Geometry
 

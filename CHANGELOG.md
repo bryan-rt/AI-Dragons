@@ -1,6 +1,46 @@
 # Changelog
 
-## [5.1-3a] - CP5.1 Pass 3a: Foundation
+## [5.1.3b] - CP5.1.3b: Algorithms
+
+Search engine, state threading, damage pipeline, initiative. The simulator
+now has a "brain" that can be driven by mock evaluators; CP5.1.3c wires in
+real action evaluators.
+
+### New modules
+- `sim/round_state.py` — `CombatantSnapshot`, `EnemySnapshot`, `RoundState`
+  with `from_scenario`, `with_pc_update`, `with_enemy_update`.
+- `pf2e/damage_pipeline.py` — `resolve_strike_outcome` implementing the
+  strict PF2e order: Intercept Attack → Shield Block → Resistance → Temp HP
+  → Real HP.
+  (AoN: https://2e.aonprd.com/Rules.aspx?ID=2301)
+  (AoN: https://2e.aonprd.com/Rules.aspx?ID=2309)
+  (AoN: https://2e.aonprd.com/Rules.aspx?ID=2321)
+  (AoN: https://2e.aonprd.com/Rules.aspx?ID=2180)
+  (AoN: https://2e.aonprd.com/Actions.aspx?ID=3305)
+- `sim/initiative.py` — `roll_initiative` with seeded RNG, partial override,
+  enemy-beats-PC tiebreaker, alphabetical same-side.
+  (AoN: https://2e.aonprd.com/Rules.aspx?ID=2423)
+- `sim/search.py` — beam search K=50/20/10 depth 3, adversarial enemy
+  sub-search K=20/10/5, hybrid state threading with kill/drop branching at
+  ≥5% threshold.
+
+### Scoring
+- `score_state(state, initial)` implements D11/D12.
+- kill_value = max_hp + 10 × num_attacks_per_turn.
+- drop_cost = max_hp + 10 × role_multiplier (Dalai 2.0, all others 1.0).
+- Temp HP absorption NOT counted as damage_taken (per D24).
+
+### Reactions
+- Full search branching per D23 (C2). Shield Block and Intercept Attack
+  expand a Strike's outcome set. Timing target: 15s per round.
+
+### Docs
+- CHARACTERS.md arithmetic fix (+8 → +7 in 4 spots).
+- Checkpoint naming: CP5.1.3b replaces "CP5.1 Pass 3b".
+- RULES_CITATIONS.md Initiative URL corrected (ID=2127 → ID=2423).
+- D21-D24 added to DECISIONS.md.
+
+## [5.1-3a] - CP5.1.3a: Foundation
 
 Foundation data model for the full-round turn evaluator. No algorithms,
 no evaluators — only types, helpers, and data population.

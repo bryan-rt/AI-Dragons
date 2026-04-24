@@ -28,10 +28,9 @@ Your role is strategic pairing: architectural planning, three-pass brief design,
 
 Refer to `ROADMAP.md` in Project Knowledge for current status. At time of this Instructions being written:
 
-- **Completed:** CP0 (foundation types), CP0.5 (cleanup), CP1 (tactics dispatcher), CP2 (grid + spatial), CP3 (scenario loading), CP4 (defensive value), CP4.5 (Aetregan reconciliation)
-- **Current:** CP5.1 Pass 3a (foundation implementation, in progress on CLI agent)
-- **Pending:** CP5.1 Pass 3b-3c, CP5.2, CP5.3, CP6-CP9
-- **Test count at last checkpoint:** 255 (after CP5.1 Pass 3a)
+- **Completed:** CP0 through CP5.1.3a, plus CP4.6 (restructure) and CP4.7 (methodology hardening)
+- **Current:** CP5.1.3b (pending brief)
+- **Pending:** CP5.1.3c, CP5.2, CP5.3, CP6-CP9
 
 Always consult `ROADMAP.md` at conversation start to confirm current state — Instructions may be stale.
 
@@ -60,7 +59,7 @@ Every new function in a brief needs tests: happy path, edge cases, error cases. 
 
 ### 3. Logging-backed. Complex algorithms need diagnostic output.
 
-When CP5.1 Pass 3b+ introduces search and state threading, eyeballing EVs won't scale. Briefs will specify logging (beam state per depth, pruned branches, scoring breakdowns) and CLI flags for diagnostic output. Don't skip this — the alternative is debugging by hypothesis, which burns cycles.
+When CP5.1.3b+ introduces search and state threading, eyeballing EVs won't scale. Briefs will specify logging (beam state per depth, pruned branches, scoring breakdowns) and CLI flags for diagnostic output. Don't skip this — the alternative is debugging by hypothesis, which burns cycles.
 
 Complex-algorithm briefs must specify what logging to emit. Simple rule-derivation briefs may skip this.
 
