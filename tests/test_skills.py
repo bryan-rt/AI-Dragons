@@ -8,11 +8,11 @@ from tests.fixtures import make_aetregan, make_dalai, make_erisen, make_rook
 class TestAetreganSkills:
     """Verified against Pathbuilder JSON character sheet."""
 
-    def test_warfare_lore_plus_8(self) -> None:
-        """Int +4, trained +3 = +7... wait: lore uses Int mod + prof.
-        Int 18 (+4), trained at level 1 = +2 + 1 = +3. Total +7.
-        Actually: proficiency_bonus(TRAINED, 1) = 2 + 1 = 3.
-        lore_bonus = 4 + 3 = 7.
+    def test_warfare_lore_plus_7(self) -> None:
+        """Warfare Lore: Int 18 (+4) + trained (+3 at L1) = +7.
+
+        Trained proficiency at level 1 = rank.value (2) + level (1) = 3.
+        Plus Int mod +4 = total +7.
         """
         assert lore_bonus(make_aetregan(), "Warfare") == 7
 

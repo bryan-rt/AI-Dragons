@@ -1,44 +1,37 @@
 # Current State
 
-**Last updated:** After CP4.5 completion, CP5.1 Pass 3a in progress on CLI agent.
+**Last updated:** After CP5.1 Pass 3a implementation and CP4.7 methodology hardening.
 
 Update this file at the end of every checkpoint.
 
 ## Latest Test Count
 
-**207 passing** (after CP4.5). Expected ~235-245 after Pass 3a.
+**255 passing** (after CP5.1 Pass 3a).
 
 ## Active Work
 
-**CP5.1 Pass 3a — Foundation Implementation**
+**CP5.1 Pass 3b — Algorithms** (pending brief).
 
-Brief: `.claude/briefs/checkpoint_5_1_pass_3a_brief.md`
+Expected scope (from Pass 2 architectural commitments):
+- `sim/round_state.py`: `RoundState` with shallow-clone + frozenset conditions
+- `sim/search.py`: beam search K=50/20/10 at depth 3
+- Adversarial enemy sub-search (K=20, depth 3)
+- Hybrid state threading: EV-collapse with kill/drop branching at 5% threshold
+- Scoring function: `kill_value = max_hp + 10 × num_attacks`, `drop_cost = max_hp + 10 × role_multiplier` (Dalai = 2x)
+- `sim/initiative.py`: seeded Perception + d20 rolling
+- `pf2e/damage_pipeline.py`: strict PF2e damage resolution (attack → damage → Intercept → Shield Block → resistance → temp HP)
 
-Scope:
-- `Skill` enum + `SKILL_ABILITY` lookup
-- `Character` extensions: skill_proficiencies, lores, feat flags (has_plant_banner, has_deceptive_tactics, has_lengthy_diversion)
-- `skill_bonus()`, `lore_bonus()` helpers
-- Aetregan full skill data from JSON
-- Squadmate HP and skill grounded defaults
-- `ActionType` enum (15 types)
-- `Action`, `ActionOutcome`, `ActionResult` dataclasses
-- `CombatantState` HP tracking extensions
-- `EnemyState` HP and perception extensions
-- Scenario parser `[initiative]` section
-- Tests across 5 new test files
-
-Not in Pass 3a (deferred to 3b and 3c):
-- `RoundState`, search algorithms, damage pipeline, scoring (3b)
-- Per-action evaluators, stride destinations, output formatter (3c)
+Expected test count after Pass 3b: ~295-315.
 
 ## Known Regression Anchors
 
 All must pass at every checkpoint:
 
 - **EV 8.55** — Rook longsword reaction Strike with Anthem vs Bandit1 AC 15 (Strike Hard tactic). Located in `tests/test_scenario.py::TestKillerValidation::test_strike_hard_from_disk`.
-- **55% prone probability** — Tactical Takedown vs Reflex +5 DC 17. Located in `tests/test_tactics.py`.
-- **EV 5.95 per target** — Light mortar 2d6 DC 17 vs Reflex +5. Located in `tests/test_combat_math.py`.
-- **Aetregan max HP 15** — After CP4.5. Located in `tests/test_hp.py`.
+- **55% prone probability** — Tactical Takedown vs Reflex +5 DC 17. `tests/test_tactics.py`.
+- **EV 5.95 per target** — Light mortar 2d6 DC 17 vs Reflex +5. `tests/test_combat_math.py`.
+- **Aetregan max HP 15** — After CP4.5. `tests/test_hp.py`.
+- **Aetregan Warfare/Deity Lore +7** — Int +4 + trained +3 = +7 at level 1. `tests/test_skills.py`.
 
 ## Completed Checkpoints Summary
 
@@ -51,11 +44,13 @@ All must pass at every checkpoint:
 | CP3 | 181 | Scenario loading |
 | CP4 | 199 | Defensive value |
 | CP4.5 | 207 | Aetregan reconciliation |
-| CP5.1 Pass 3a | ~235-245 (expected) | Foundation (in progress) |
+| CP5.1 Pass 3a | 255 | Foundation (data model, skill system, HP tracking, initiative parsing) |
+| CP4.6 | 255 | Repo restructuring (no code changes) |
+| CP4.7 | 255 | Methodology documentation (no code changes) |
 
 ## Next Up
 
-After Pass 3a validates, CP5.1 Pass 3b will be written. Scope: search algorithms, state threading, damage pipeline, scoring function. ~40-60 new tests.
+Write CP5.1 Pass 3b brief, then implement.
 
 ## Known TODOs
 

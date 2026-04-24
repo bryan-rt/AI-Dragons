@@ -31,21 +31,91 @@ Refer to `ROADMAP.md` in Project Knowledge for current status. At time of this I
 - **Completed:** CP0 (foundation types), CP0.5 (cleanup), CP1 (tactics dispatcher), CP2 (grid + spatial), CP3 (scenario loading), CP4 (defensive value), CP4.5 (Aetregan reconciliation)
 - **Current:** CP5.1 Pass 3a (foundation implementation, in progress on CLI agent)
 - **Pending:** CP5.1 Pass 3b-3c, CP5.2, CP5.3, CP6-CP9
-- **Test count at last checkpoint:** 207
+- **Test count at last checkpoint:** 255 (after CP5.1 Pass 3a)
 
 Always consult `ROADMAP.md` at conversation start to confirm current state — Instructions may be stale.
 
+## Core Engineering Philosophy
+
+Three principles govern every checkpoint on this project. Name them, honor them, and flag when they're being violated.
+
+### 1. Evidence-first. Never code from assumptions.
+
+Every PF2e rule cited in a brief must link to https://2e.aonprd.com. Every mechanical claim must be verifiable. When uncertain, web_search AoN — don't trust memory. When you don't know, flag it as `(UNVERIFIED — please check)` rather than guessing.
+
+This principle has caught multiple real errors:
+- **Aetregan Wis 11 → 12** (CP0.5) — boost arithmetic assumed incorrectly
+- **Mortar EV 5.60 → 5.95** (CP0.5) — save boundary rule applied incorrectly
+- **Banner aura 30 → 40 ft** (CP4) — Plant Banner expansion missed
+- **Scorpion Whip vs Whip** (CP4.5) — weapon trait assumed from name similarity
+- **Commander Perception trained → expert** (CP4.5) — class feature progression assumed
+
+Every one of these was caught in a brief-writing pass *before* code was written. The three-pass methodology exists to preserve this gap.
+
+### 2. Test-first. Tests ratchet forward.
+
+Every checkpoint adds tests that lock in its correctness. The regression chain (EV 8.55 at every checkpoint since CP1, 55% prone probability, 5.95 mortar EV, HP targets) is the project's backbone. When a test breaks, investigate before editing the test's expected value — the code is usually wrong, not the test.
+
+Every new function in a brief needs tests: happy path, edge cases, error cases. Every correction to a rule becomes a regression test so the error doesn't silently return.
+
+### 3. Logging-backed. Complex algorithms need diagnostic output.
+
+When CP5.1 Pass 3b+ introduces search and state threading, eyeballing EVs won't scale. Briefs will specify logging (beam state per depth, pruned branches, scoring breakdowns) and CLI flags for diagnostic output. Don't skip this — the alternative is debugging by hypothesis, which burns cycles.
+
+Complex-algorithm briefs must specify what logging to emit. Simple rule-derivation briefs may skip this.
+
 ## Three-Pass Methodology
 
-Every checkpoint goes through three passes before implementation:
+Every checkpoint passes through three structured phases before code ships. Each pass has a distinct deliverable. Don't skip passes or combine them without explicit authorization.
 
-**Pass 1 (Architecture):** High-level design, data model, algorithm choices. You write the brief outlining what, why, and what NOT to build. User reviews and reacts to architectural decisions.
+### Pass 1 — High-Level Planning
 
-**Pass 2 (Refinements):** Incorporates user feedback, refines specific decisions, names defaults for things user didn't opine on. Resolves open questions from Pass 1. User approves or pushes back.
+**Input:** A Pass 1 brief describing the problem, scope, and design questions.
 
-**Pass 3 (Implementation):** Step-by-step implementation brief for the CLI agent. Specific file paths, code skeletons, test lists, validation checklist, common pitfalls. The CLI agent executes this brief.
+**Your job:**
+1. Read the brief, referenced code files, and relevant `.claude/context/` docs
+2. Research PF2e rules on Archives of Nethys — verify every mechanical claim
+3. Enter planning mode. Do NOT write code.
+4. Produce a high-level architectural plan: data model, module structure, function signatures, integration points, test strategy
+5. Surface concerns, ambiguities, and open questions that need user input before committing to a design
+6. Mark unverifiable claims as `(UNVERIFIED — please check)`
 
-For large checkpoints (CP5.1 especially), Pass 3 itself splits into sub-phases (3a, 3b, 3c) each with its own brief-review-implement cycle.
+**Deliverable:** A markdown plan document. No code.
+
+### Pass 2 — Refinement
+
+**Input:** A Pass 2 brief with corrections, clarifications, and decisions on the open questions from Pass 1.
+
+**Your job:**
+1. Apply each correction to the plan
+2. Finalize any remaining design decisions
+3. Produce a refined plan with concrete data: exact field names, exact function signatures, exact test expectations, exact AoN URLs
+4. Flag remaining blockers for Pass 3
+
+**Deliverable:** A compact updated plan. Still no code.
+
+### Pass 3 — Implementation
+
+**Input:** A Pass 3 brief with step-by-step implementation instructions, code skeletons, test specifications, and a validation checklist.
+
+**Your job:**
+1. Read the brief end-to-end before starting
+2. Read the files listed in "Pre-implementation: read existing code"
+3. Follow the implementation steps in order
+4. Write the tests specified in the brief
+5. Run `pytest tests/ -v` — all tests must pass
+6. Verify the killer regression (EV 8.55 from disk) still holds
+7. Update CHANGELOG.md with the brief's CHANGELOG section
+8. Update `.claude/context/current_state.md` with new test count and status
+9. Commit with a clear checkpoint message
+
+**Deliverable:** Working code with passing tests, committed and pushed.
+
+### Why Three Passes?
+
+Pass 1 catches design errors before code is written. Pass 2 catches rule errors before implementation commits. Pass 3 executes a validated plan. This system has caught every major rule mistake on the project. Don't collapse passes to save time — you'll spend it later on rework.
+
+For large checkpoints (CP5.1), Pass 3 itself splits into sub-phases (3a, 3b, 3c), each with its own brief-review-implement cycle. The three-pass structure still applies to the checkpoint as a whole.
 
 **All briefs are saved to `.claude/briefs/` in the repo** for historical reference.
 

@@ -1,6 +1,6 @@
 # Roadmap
 
-Status at time of last update: CP5.1 Pass 3a implementation delivered to CLI agent, awaiting completion and review.
+Status at time of last update: CP5.1 Pass 3a complete (255 tests). CP4.6 and CP4.7 restructuring/methodology work complete. CP5.1 Pass 3b pending brief.
 
 Update this document whenever a checkpoint ships or a major decision shifts the plan.
 
@@ -66,33 +66,38 @@ Implementation: 199 → 207 tests.
 - Canonical scenario updated to `planted = false` (Aetregan doesn't have Plant Banner at L1)
 - Strike Hard EV 8.55 regression preserved
 
+### CP5.1 Pass 3a — Foundation
+Implementation: 207 → 255 tests.
+- `Skill` enum (16 skills) and `SKILL_ABILITY` lookup in `pf2e/types.py`
+- `Character` extensions: `skill_proficiencies`, `lores`, feat-presence flags
+- `skill_bonus()` and `lore_bonus()` helpers in `pf2e/combat_math.py`
+- Aetregan full skill data from JSON (10 trained, 6 untrained, 2 lores)
+- Squadmate HP and skill grounded defaults (Rook 23, Dalai 17, Erisen 16)
+- `ActionType` enum (15 types), `Action`, `ActionOutcome`, `ActionResult` in new `pf2e/actions.py`
+- `CombatantState` HP tracking: `current_hp`, `temp_hp`, `actions_remaining`
+- `EnemyState` extensions: `max_hp`, `current_hp`, `perception_bonus`, `perception_dc`
+- Scenario parser `[initiative]` section support
+
+### CP4.6 — Repo Restructuring
+255 tests preserved (no code changes).
+- `CLAUDE.md` at repo root for CLI agent context
+- `.claude/context/` for agent-facing reference docs
+- `.claude/project_reference/` as version-controlled mirror of Claude Project knowledge
+- `.claude/briefs/` scaffolding for historical brief archive
+- `characters/` directory with aetregan.json canonical data
+- Removed `project_restructure_docs/` staging directory
+
+### CP4.7 — Methodology Hardening
+255 tests preserved (no code changes).
+- Fixed `characters/README.md` content bug from CP4.6
+- Populated `.claude/briefs/` scaffolding
+- Added "Core Engineering Philosophy" section to `PROJECT_INSTRUCTIONS.md`
+- Structural three-pass methodology in `PROJECT_INSTRUCTIONS.md` mirrors `CLAUDE.md`
+- Logging and diagnostic output conventions added to `conventions.md`
+
 ## In Progress
 
-### CP5.1 Pass 3a — Foundation (active)
-CP5.1 = full-round turn evaluator with adversarial enemies and hybrid state threading. Split into three sub-phases:
-
-- **3a: Foundation** (active) — data model, types, helpers, character data. ~30-40 new tests.
-- **3b: Algorithms** — search, state threading, scoring, damage pipeline. ~40-60 new tests.
-- **3c: Actions** — 15 action evaluators, integration, output formatting. ~50-70 new tests.
-
-Target total after CP5.1: ~355-405 tests.
-
-**Pass 3a scope (what the CLI agent is currently implementing):**
-1. `Skill` enum (16 skills) and `SKILL_ABILITY` lookup
-2. `Character` extensions: `skill_proficiencies`, `lores`, `has_plant_banner`, `has_deceptive_tactics`, `has_lengthy_diversion`
-3. `skill_bonus()` and `lore_bonus()` helpers
-4. Aetregan skill data from JSON (10 trained, 6 untrained, 2 lores)
-5. Squadmate HP and skill grounded defaults
-6. `ActionType` enum (15 types)
-7. `Action`, `ActionOutcome`, `ActionResult` dataclasses
-8. `CombatantState.current_hp`, `temp_hp`, `actions_remaining`, `effective_current_hp`
-9. `EnemyState.max_hp`, `current_hp`, `perception_bonus`, `actions_remaining`, `perception_dc`
-10. Scenario parser `[initiative]` section support
-11. Tests across 5 new test files
-12. CHANGELOG update
-
-**Deferred to Pass 3b:** `RoundState`, search algorithms, damage pipeline, scoring, initiative rolling.
-**Deferred to Pass 3c:** per-action evaluators, stride destination enumeration, output formatter, `--debug-search` CLI flag.
+CP5.1 Pass 3b — Algorithms (pending brief).
 
 ## Pending Checkpoints
 

@@ -1,76 +1,38 @@
-# Briefs Archive
+# Characters
 
-Historical design and implementation briefs for every checkpoint. The CLI agent references these when working on a specific checkpoint or when needing context on past decisions.
+Canonical character data. Dual purpose:
 
-## Organization
+1. **Current:** Storage for the party members' source-of-truth build data
+2. **Future (Phase B):** Landing zone for Pathbuilder importer uploads
 
-Briefs are named `checkpoint_<num>_pass_<num>_brief.md` where applicable:
+## Files
 
-- `pf2e_sim_task_brief_pass1.md` — initial project architecture
-- `pf2e_sim_task_brief_pass1_5.md` — foundation refinement
-- `pf2e_sim_task_brief_pass2_5.md` — further foundation
-- `checkpoint_0_5_cleanup_brief.md` — CP0.5 corrections
-- `checkpoint_1_pass_1_brief.md` — CP1 architecture
-- `checkpoint_1_pass_2_brief.md` — CP1 refinements
-- `checkpoint_1_pass_3_brief.md` — CP1 implementation
-- `checkpoint_2_pass_1_brief.md` through `checkpoint_2_pass_3_brief.md`
-- `checkpoint_3_pass_1_brief.md` through `checkpoint_3_pass_3_brief.md`
-- `checkpoint_4_pass_1_brief.md` through `checkpoint_4_pass_3_brief.md`
-- `checkpoint_4_5_aetregan_reconciliation.md` — CP4.5 reconciliation
-- `checkpoint_5_1_pass_1_brief.md` — CP5.1 architecture (turn evaluator)
-- `checkpoint_5_1_pass_2_brief.md` — CP5.1 refinements
-- `checkpoint_5_1_pass_3a_brief.md` — CP5.1 foundation implementation (active)
-- `checkpoint_5_1_pass_3b_brief.md` — CP5.1 algorithms (future)
-- `checkpoint_5_1_pass_3c_brief.md` — CP5.1 actions and integration (future)
+- `aetregan.json` — Pathbuilder JSON export for Aetregan (Bryan's Commander). **Canonical** — any discrepancy between this file and `sim/party.py::make_aetregan()` is a bug in code.
+- `rook.json` — *Future.* Currently not provided; `sim/party.py::make_rook()` uses grounded defaults based on Automaton Guardian archetype.
+- `dalai.json` — *Future.* Currently not provided; `sim/party.py::make_dalai()` uses grounded defaults based on Human Bard Warrior Muse archetype.
+- `erisen.json` — *Future.* Currently not provided; `sim/party.py::make_erisen()` uses grounded defaults based on Elf Inventor Munitions Master archetype.
 
-## Three-Pass Methodology
+## Format
 
-Each checkpoint follows a three-pass design before implementation:
+Pathbuilder JSON export format. Key fields: `build.name`, `build.class`, `build.level`, `build.ancestry`, `build.abilities`, `build.attributes` (ancestry HP, class HP, speed), `build.proficiencies` (numeric ranks), `build.feats`, `build.specials`, `build.weapons`, `build.armor`, `build.lores`.
 
-**Pass 1 (Architecture):** High-level design — data model, algorithm choices, scope. Ends with review asks for the user.
+## Reconciliation Process
 
-**Pass 2 (Refinements):** Incorporates feedback, resolves open questions, names defaults for undecided items.
+When a new canonical JSON arrives (e.g., Rook's sheet eventually):
 
-**Pass 3 (Implementation):** Step-by-step brief for the CLI agent. Specific file paths, code skeletons, tests, validation checklist, pitfalls.
+1. Compare against current grounded defaults in `sim/party.py`
+2. File any discrepancies as a mini-checkpoint (follow CP4.5 pattern)
+3. Update `make_X()` factory to match JSON exactly
+4. Update `CHANGELOG.md` documenting the corrections
+5. Ensure Strike Hard EV 8.55 regression still holds
 
-For large checkpoints (CP5.1), Pass 3 splits into sub-briefs (3a, 3b, 3c).
+## Phase B Preview
 
-## How to Use These Briefs
+When the Pathbuilder importer ships (post-CP9, Phase B):
 
-### When implementing a checkpoint:
-Read the Pass 3 brief for that checkpoint. Follow it exactly. The brief specifies:
-- What to implement (and what NOT to implement)
-- Files to read first
-- Step-by-step implementation order
-- Tests to write
-- Validation checklist
-- Common pitfalls for that specific work
+- Users upload their Pathbuilder JSON to this directory via a web interface
+- Importer parses the JSON and produces a `Character` object
+- Unknown feats are flagged with warnings but character is still usable
+- Effects catalog (Phase B+) maps named feats to mechanical effects as it grows
 
-### When reviewing prior decisions:
-Read the Pass 1 brief for architectural reasoning. Pass 2 for how decisions were refined based on feedback. Decision rationale often lives in Pass 1 and Pass 2, not just Pass 3.
-
-### When flagging discrepancies:
-If implementation diverges from brief, reference the specific brief and step. This helps triage: is the brief wrong, or is the implementation wrong?
-
-## Brief Writing Conventions
-
-Briefs have consistent structure:
-
-1. **Context** — what checkpoint this is, what's been decided, what's coming
-2. **Scope** — what to implement, what NOT to implement
-3. **Pre-implementation: read existing code** — files to `view` first
-4. **Implementation** — step-by-step instructions with code skeletons
-5. **Validation checklist** — items to tick off before considering complete
-6. **Common pitfalls** — gotchas specific to this work
-7. **What comes after** — where this fits in the larger plan
-
-The Pass 3 briefs in particular are self-contained: a fresh CLI agent should be able to implement the checkpoint from the brief alone, without outside context.
-
-## Preserving History
-
-All briefs stay in this directory indefinitely. When checkpoints are superseded or their decisions reversed, the historical brief remains. The CHANGELOG documents what actually shipped; the briefs document what was planned.
-
-This gives us a complete paper trail for architectural decisions, which is important for:
-- Understanding why current code is shaped the way it is
-- Avoiding relitigating decisions that were already made
-- Training future agents / maintainers on the project's reasoning style
+At that point, `sim/party.py` becomes a fallback for test fixtures, and user-imported characters become the primary use case.

@@ -122,3 +122,29 @@ Most recent entry goes at the top (reverse chronological).
 - **Rule interpretation questions.** If two AoN rules seem to contradict, ask.
 - **Architectural choices not covered by the brief.** If the brief is silent on something, make a reasonable choice but flag it in the commit message.
 - **Unexpected test failures.** If existing tests fail after your changes and you don't understand why, stop and investigate. Don't "fix" them by changing expected values without understanding.
+
+## Logging and Diagnostic Output
+
+For simple rule-derivation code (combat math, equipment, character builders), tests provide enough visibility. Don't add logging.
+
+For complex algorithms (search, state threading, multi-step evaluators), logging is essential for debugging. When a brief introduces algorithmic work, it will specify logging requirements. Follow them:
+
+- **Use the standard library `logging` module.** No print statements in production code. Tests may use print for debug output during development but should be cleaned before committing.
+- **Logger per module:** `logger = logging.getLogger(__name__)` at module top. Propagates to the root logger; user controls verbosity.
+- **Log levels:**
+  - `DEBUG`: per-iteration detail (beam state per depth, each candidate evaluated, scoring breakdowns)
+  - `INFO`: checkpoint-level events (round start, action chosen, EV of final plan)
+  - `WARNING`: recoverable anomalies (probability sum drift, unexpected empty result)
+  - `ERROR`: genuine bugs that should not happen in validated code
+- **CLI flags for diagnostic output.** Algorithm-heavy modules expose `--debug-search` or similar flags that set logger levels at runtime. The flag is documented in the brief that introduces it.
+- **Logged data is structured.** Prefer f-string formatting of specific fields over dumping whole objects. `logger.debug(f"Beam depth {d}: {len(beam)} candidates, best EV {best:.2f}")` — not `logger.debug(f"Beam: {beam}")`.
+- **Tests may assert on log output** for critical paths. Use `caplog` fixture in pytest when verifying that warnings fire when expected.
+
+## Diagnostic Conventions for Complex Algorithm Work
+
+When reviewing output from complex algorithms during development:
+
+- Dump full state at a specific depth or iteration with a CLI flag, not by editing the code
+- Probability sums should be verified with `ActionResult.verify_probability_sum()` in any test that constructs action results
+- When EVs don't match expectations, log the inputs (bonuses, DCs, outcome counts) before changing anything — the bug is usually upstream of where you first noticed it
+- Keep a "killer regression" test at every checkpoint. Small regressions in beam search can shift EVs by fractions; the killer test is your canary
