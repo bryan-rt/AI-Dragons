@@ -71,10 +71,41 @@ tests/             # Tests mirror production structure
 
 See `.claude/context/architecture.md` for the full module layout and layering rules.
 
-## Workflow
+## Three-Pass Development System
 
-When given a Pass 3 brief:
+Every checkpoint follows a three-pass loop. Each pass has a distinct purpose and deliverable. Do not skip passes or combine them without explicit authorization.
 
+### Pass 1 — High-Level Planning
+
+**Input:** A Pass 1 brief describing the problem, scope, and design questions.
+
+**Your job:**
+1. Read the brief, all referenced code files, and relevant `.claude/context/` docs
+2. Research PF2e rules on Archives of Nethys (web_fetch/web_search) — verify every mechanical claim
+3. Enter planning mode. Do NOT write code.
+4. Produce a high-level architectural plan covering: data model, module structure, function signatures, integration points, test strategy
+5. Surface concerns, ambiguities, and open questions that need user input before committing to a design
+6. Mark anything you cannot verify as `(UNVERIFIED — please check)`
+
+**Deliverable:** A markdown plan document. No code.
+
+### Pass 2 — Refinement
+
+**Input:** A Pass 2 brief with corrections, clarifications, and decisions on the open questions from Pass 1.
+
+**Your job:**
+1. Apply each correction to the plan
+2. Finalize any remaining design decisions
+3. Produce a refined plan with concrete data: exact field names, exact function signatures, exact test expectations, exact AoN URLs
+4. Flag any remaining blockers for Pass 3
+
+**Deliverable:** A compact updated plan. Still no code.
+
+### Pass 3 — Implementation
+
+**Input:** A Pass 3 brief with step-by-step implementation instructions, exact code skeletons, test specifications, and a validation checklist.
+
+**Your job:**
 1. Read the brief end-to-end before starting
 2. Read the files listed in "Pre-implementation: read existing code"
 3. Follow the implementation steps in order
@@ -85,6 +116,12 @@ When given a Pass 3 brief:
 8. Update `.claude/context/current_state.md` with new test count and status
 9. Commit with a clear message referencing the checkpoint (e.g., "CP5.1 Pass 3a: foundation implementation")
 10. Push to GitHub
+
+**Deliverable:** Working code with passing tests, committed and pushed.
+
+### Why Three Passes?
+
+Pass 1 catches design errors before code is written. Pass 2 catches rule errors before implementation commits. Pass 3 executes a validated plan. This system has caught multiple PF2e rule mistakes (mortar EV, banner aura expansion, Aetregan's stats) that would have been expensive to fix after implementation.
 
 ## If You Find Discrepancies
 
