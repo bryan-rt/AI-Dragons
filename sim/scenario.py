@@ -33,7 +33,7 @@ parser (e.g., m1, m2, M1), never the bare letter.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from pf2e.character import CombatantState, EnemyState
@@ -79,6 +79,10 @@ class Scenario:
     commander: CombatantState
     squadmates: list[CombatantState]
     enemies: list[EnemyState]
+
+    # Initiative specification (Pass 3b uses this to roll/sort)
+    initiative_seed: int = 42
+    initiative_explicit: dict[str, int] = field(default_factory=dict)
 
     def build_tactic_context(self) -> TacticContext:
         """Produce a fresh TacticContext with GridSpatialQueries wired in.
@@ -267,6 +271,46 @@ def _parse_enemies(text: str) -> dict[str, dict[str, str]]:
     return result
 
 
+def _parse_initiative(text: str | None) -> tuple[int, dict[str, int]]:
+    """Parse [initiative] section.
+
+    Supports seed-only or explicit ordering.
+    Returns (seed, explicit_dict). If section omitted, returns (42, {}).
+    """
+    if not text:
+        return (42, {})
+
+    seed = 42
+    explicit: dict[str, int] = {}
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+
+        if key.lower() == "seed":
+            try:
+                seed = int(value)
+            except ValueError as e:
+                raise ScenarioParseError(
+                    f"[initiative] seed must be an integer: {value}"
+                ) from e
+        else:
+            try:
+                explicit[key] = int(value)
+            except ValueError as e:
+                raise ScenarioParseError(
+                    f"[initiative] '{key}' must be an integer: {value}"
+                ) from e
+
+    return (seed, explicit)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -301,6 +345,9 @@ def parse_scenario(text: str) -> Scenario:
     )
     anthem_active = _parse_anthem(sections.get("anthem"))
     enemy_specs = _parse_enemies(sections.get("enemies", ""))
+    initiative_seed, initiative_explicit = _parse_initiative(
+        sections.get("initiative"),
+    )
 
     # Commander required
     if COMMANDER_TOKEN not in positions:
@@ -355,4 +402,6 @@ def parse_scenario(text: str) -> Scenario:
         commander=commander,
         squadmates=squadmates,
         enemies=enemies,
+        initiative_seed=initiative_seed,
+        initiative_explicit=initiative_explicit,
     )

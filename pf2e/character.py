@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from pf2e.abilities import AbilityScores
 from pf2e.equipment import ArmorData, EquippedWeapon, Shield
-from pf2e.types import Ability, ProficiencyRank, SaveType, WeaponCategory
+from pf2e.types import Ability, ProficiencyRank, SaveType, Skill, WeaponCategory
 
 
 @dataclass(frozen=True)
@@ -60,6 +60,19 @@ class Character:
     ancestry_hp: int = 0
     class_hp: int = 0
 
+    # Skill proficiencies — missing keys default to UNTRAINED.
+    # (AoN: https://2e.aonprd.com/Skills.aspx)
+    skill_proficiencies: dict[Skill, ProficiencyRank] = field(default_factory=dict)
+
+    # Lore proficiencies — arbitrary character-specific strings.
+    # (AoN: https://2e.aonprd.com/Skills.aspx?ID=47)
+    lores: dict[str, ProficiencyRank] = field(default_factory=dict)
+
+    # Feat-presence flags for feats that affect action evaluator logic.
+    has_plant_banner: bool = False
+    has_deceptive_tactics: bool = False
+    has_lengthy_diversion: bool = False
+
 
 @dataclass
 class CombatantState:
@@ -97,6 +110,21 @@ class CombatantState:
     # (AoN: https://2e.aonprd.com/Spells.aspx?ID=1763)
     status_bonus_attack: int = 0
     status_bonus_damage: int = 0
+
+    # HP tracking (CP5.1). current_hp=None means "at full HP".
+    current_hp: int | None = None
+    temp_hp: int = 0
+
+    # Action economy for the current turn (reset per turn by search)
+    actions_remaining: int = 3
+
+    @property
+    def effective_current_hp(self) -> int:
+        """Current HP with None treated as max."""
+        from pf2e.combat_math import max_hp
+        if self.current_hp is None:
+            return max_hp(self.character)
+        return self.current_hp
 
     @classmethod
     def from_character(
@@ -142,3 +170,25 @@ class EnemyState:
     damage_dice: str = ""          # e.g., "1d8"; empty = no modeled offense
     damage_bonus: int = 0
     num_attacks_per_turn: int = 2
+
+    # HP tracking (CP5.1)
+    max_hp: int = 20              # plausible L1 bandit default
+    current_hp: int | None = None
+
+    # Perception for initiative and skill-check DCs
+    perception_bonus: int = 4     # plausible L1 enemy default
+
+    # Action economy
+    actions_remaining: int = 3
+
+    @property
+    def perception_dc(self) -> int:
+        """DC for Deception/Stealth checks against this enemy."""
+        return 10 + self.perception_bonus
+
+    @property
+    def effective_current_hp(self) -> int:
+        """Current HP with None treated as max."""
+        if self.current_hp is None:
+            return self.max_hp
+        return self.current_hp

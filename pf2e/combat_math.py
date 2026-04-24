@@ -12,7 +12,7 @@ from pf2e.abilities import AbilityScores
 from pf2e.character import Character, CombatantState, EnemyState
 from pf2e.equipment import EquippedWeapon, Weapon
 from pf2e.proficiency import proficiency_bonus
-from pf2e.types import Ability, ProficiencyRank, SaveType
+from pf2e.types import Ability, ProficiencyRank, SaveType, Skill, SKILL_ABILITY
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +383,31 @@ def perception_bonus(character: Character) -> int:
     wis_mod = character.abilities.mod(Ability.WIS)
     prof = proficiency_bonus(character.perception_rank, character.level)
     return wis_mod + prof
+
+
+def skill_bonus(character: Character, skill: Skill) -> int:
+    """Total skill check bonus: ability mod + proficiency.
+
+    Missing skill in skill_proficiencies defaults to UNTRAINED (0).
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2136)
+    """
+    ability = SKILL_ABILITY[skill]
+    ability_mod = character.abilities.mod(ability)
+    rank = character.skill_proficiencies.get(skill, ProficiencyRank.UNTRAINED)
+    prof = proficiency_bonus(rank, character.level)
+    return ability_mod + prof
+
+
+def lore_bonus(character: Character, lore_name: str) -> int:
+    """Total lore check bonus: Int mod + proficiency.
+
+    Lores always use Int. Missing lore defaults to UNTRAINED.
+    (AoN: https://2e.aonprd.com/Skills.aspx?ID=47)
+    """
+    ability_mod = character.abilities.mod(Ability.INT)
+    rank = character.lores.get(lore_name, ProficiencyRank.UNTRAINED)
+    prof = proficiency_bonus(rank, character.level)
+    return ability_mod + prof
 
 
 # ---------------------------------------------------------------------------

@@ -88,3 +88,48 @@ class SaveType(Enum):
     FORTITUDE = auto()
     REFLEX = auto()
     WILL = auto()
+
+
+class Skill(Enum):
+    """The sixteen standard skills.
+
+    Lores are tracked separately on Character.lores as a dict since
+    they're arbitrary character-specific strings (Warfare Lore, etc.).
+    (AoN: https://2e.aonprd.com/Skills.aspx)
+    """
+    ACROBATICS = auto()
+    ARCANA = auto()
+    ATHLETICS = auto()
+    CRAFTING = auto()
+    DECEPTION = auto()
+    DIPLOMACY = auto()
+    INTIMIDATION = auto()
+    MEDICINE = auto()
+    NATURE = auto()
+    OCCULTISM = auto()
+    PERFORMANCE = auto()
+    RELIGION = auto()
+    SOCIETY = auto()
+    STEALTH = auto()
+    SURVIVAL = auto()
+    THIEVERY = auto()
+
+
+SKILL_ABILITY: dict[Skill, Ability] = {
+    Skill.ACROBATICS: Ability.DEX,
+    Skill.ARCANA: Ability.INT,
+    Skill.ATHLETICS: Ability.STR,
+    Skill.CRAFTING: Ability.INT,
+    Skill.DECEPTION: Ability.CHA,
+    Skill.DIPLOMACY: Ability.CHA,
+    Skill.INTIMIDATION: Ability.CHA,
+    Skill.MEDICINE: Ability.WIS,
+    Skill.NATURE: Ability.WIS,
+    Skill.OCCULTISM: Ability.INT,
+    Skill.PERFORMANCE: Ability.CHA,
+    Skill.RELIGION: Ability.WIS,
+    Skill.SOCIETY: Ability.INT,
+    Skill.STEALTH: Ability.DEX,
+    Skill.SURVIVAL: Ability.WIS,
+    Skill.THIEVERY: Ability.DEX,
+}

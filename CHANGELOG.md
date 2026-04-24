@@ -1,5 +1,36 @@
 # Changelog
 
+## [5.1-3a] - CP5.1 Pass 3a: Foundation
+
+Foundation data model for the full-round turn evaluator. No algorithms,
+no evaluators — only types, helpers, and data population.
+
+### New types
+- Skill enum (16 skills) + SKILL_ABILITY lookup in pf2e/types.py.
+- ActionType enum (15 actions) + Action, ActionOutcome, ActionResult
+  frozen dataclasses in new pf2e/actions.py.
+
+### Character extensions
+- skill_proficiencies, lores, has_plant_banner, has_deceptive_tactics,
+  has_lengthy_diversion fields on Character.
+- skill_bonus() and lore_bonus() helpers in pf2e/combat_math.py.
+
+### Character data population
+- Aetregan: 10 trained skills, 2 lores (Warfare +7, Deity +7),
+  feat flags (Deceptive Tactics, Lengthy Diversion).
+- Rook: HP 23, 4 trained skills.
+- Dalai: HP 17, 6 trained skills, 2 lores.
+- Erisen: HP 16, 5 trained skills, 2 lores.
+
+### State extensions
+- CombatantState: current_hp, temp_hp, actions_remaining,
+  effective_current_hp property.
+- EnemyState: max_hp, current_hp, perception_bonus, actions_remaining,
+  perception_dc and effective_current_hp properties.
+
+### Scenario parser
+- [initiative] section: seed-only or explicit ordering modes.
+
 ## [4.5] - Aetregan Reconciliation
 
 ### Character corrections

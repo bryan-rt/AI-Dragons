@@ -16,6 +16,7 @@ from pf2e.types import (
     DamageType,
     ProficiencyRank,
     SaveType,
+    Skill,
     WeaponCategory,
     WeaponGroup,
 )
@@ -205,6 +206,25 @@ def make_aetregan() -> Character:
         speed=30,
         ancestry_hp=6,
         class_hp=8,
+        skill_proficiencies={
+            Skill.ACROBATICS: ProficiencyRank.TRAINED,
+            Skill.ARCANA: ProficiencyRank.TRAINED,
+            Skill.CRAFTING: ProficiencyRank.TRAINED,
+            Skill.NATURE: ProficiencyRank.TRAINED,
+            Skill.OCCULTISM: ProficiencyRank.TRAINED,
+            Skill.RELIGION: ProficiencyRank.TRAINED,
+            Skill.SOCIETY: ProficiencyRank.TRAINED,
+            Skill.STEALTH: ProficiencyRank.TRAINED,
+            Skill.SURVIVAL: ProficiencyRank.TRAINED,
+            Skill.THIEVERY: ProficiencyRank.TRAINED,
+        },
+        lores={
+            "Warfare": ProficiencyRank.TRAINED,
+            "Deity": ProficiencyRank.TRAINED,
+        },
+        has_plant_banner=False,
+        has_deceptive_tactics=True,
+        has_lengthy_diversion=True,
     )
 
 
@@ -247,6 +267,14 @@ def make_rook() -> Character:
         shield=STEEL_SHIELD,
         has_shield_block=True,
         guardian_reactions=1,
+        ancestry_hp=10,   # Automaton
+        class_hp=10,      # Guardian
+        skill_proficiencies={
+            Skill.ATHLETICS: ProficiencyRank.TRAINED,
+            Skill.INTIMIDATION: ProficiencyRank.TRAINED,
+            Skill.SOCIETY: ProficiencyRank.TRAINED,
+            Skill.CRAFTING: ProficiencyRank.TRAINED,
+        },
     )
 
 
@@ -284,6 +312,20 @@ def make_dalai() -> Character:
         class_dc_rank=ProficiencyRank.TRAINED,
         equipped_weapons=(EquippedWeapon(RAPIER),),
         armor=LEATHER_ARMOR,
+        ancestry_hp=8,    # Human
+        class_hp=8,       # Bard
+        skill_proficiencies={
+            Skill.OCCULTISM: ProficiencyRank.TRAINED,
+            Skill.PERFORMANCE: ProficiencyRank.TRAINED,
+            Skill.DIPLOMACY: ProficiencyRank.TRAINED,
+            Skill.INTIMIDATION: ProficiencyRank.TRAINED,
+            Skill.ATHLETICS: ProficiencyRank.TRAINED,
+            Skill.ACROBATICS: ProficiencyRank.TRAINED,
+        },
+        lores={
+            "Bardic": ProficiencyRank.TRAINED,
+            "Warfare": ProficiencyRank.TRAINED,
+        },
     )
 
 
@@ -323,6 +365,19 @@ def make_erisen() -> Character:
         equipped_weapons=(EquippedWeapon(DAGGER),),
         armor=STUDDED_LEATHER,
         speed=35,
+        ancestry_hp=6,    # Elf
+        class_hp=8,       # Inventor
+        skill_proficiencies={
+            Skill.CRAFTING: ProficiencyRank.TRAINED,
+            Skill.ARCANA: ProficiencyRank.TRAINED,
+            Skill.SOCIETY: ProficiencyRank.TRAINED,
+            Skill.ATHLETICS: ProficiencyRank.TRAINED,
+            Skill.NATURE: ProficiencyRank.TRAINED,
+        },
+        lores={
+            "Engineering": ProficiencyRank.TRAINED,
+            "Alkenstar": ProficiencyRank.TRAINED,
+        },
     )
 
 

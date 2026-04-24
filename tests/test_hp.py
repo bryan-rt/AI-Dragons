@@ -14,16 +14,15 @@ class TestMaxHp:
         """Elf 6 + (Commander 8 + Con +1) x L1 = 15."""
         assert max_hp(make_aetregan()) == 15
 
-    def test_unset_hp_not_meaningful(self) -> None:
-        """Characters with default ancestry_hp=0 and class_hp=0.
+    def test_rook_hp_populated(self) -> None:
+        """Rook HP populated in CP5.1 Pass 3a.
 
-        The formula still runs (returns Con-only contribution), but
-        ancestry_hp=0 signals HP data is not yet populated. CP5 will
-        populate squadmate HP fields.
+        Automaton 10 + (Guardian 10 + Con +3) x 1 = 23.
         """
         rook = make_rook()
-        assert rook.ancestry_hp == 0
-        assert rook.class_hp == 0
+        assert rook.ancestry_hp == 10
+        assert rook.class_hp == 10
+        assert max_hp(rook) == 23
 
     def test_max_hp_scales_with_level(self) -> None:
         """Formula: ancestry_hp + (class_hp + Con) x level."""
