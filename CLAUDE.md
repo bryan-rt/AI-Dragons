@@ -164,9 +164,10 @@ Identify which pass it is from the brief content:
 3. Read `.claude/context/current_state.md`, `.claude/context/architecture.md`, and `.claude/context/pitfalls.md`
 4. Research any PF2e rules mentioned using web search/fetch against Archives of Nethys (https://2e.aonprd.com/)
 5. Enter planning mode — do NOT write code
-6. Produce a high-level architectural plan covering everything the brief asks for
+6. Produce the architectural plan **as chat output** (not saved to a file)
 7. Surface concerns, ambiguities, open questions, and anything marked UNVERIFIED
-8. Wait for user review before proceeding
+8. End with a summary table of key decisions and any UNVERIFIED tags
+9. **Do NOT save the plan to a file.** The user will relay it to the web client for review. Only the brief itself gets saved (Step 1).
 
 **Pass 2 — Refinement:**
 1. Read the brief end-to-end
@@ -174,7 +175,8 @@ Identify which pass it is from the brief content:
 3. Research any new AoN citations needed
 4. Finalize design decisions with concrete field names, signatures, and test expectations
 5. Flag any remaining blockers
-6. Output the refined plan and wait for user review
+6. Output the refined plan **as chat output** (not saved to a file)
+7. **Do NOT save the plan to a file.** Same as Pass 1 — user relays to web client.
 
 **Pass 3 — Implementation:**
 1. Read the brief end-to-end before writing any code
@@ -187,17 +189,23 @@ Identify which pass it is from the brief content:
 8. Commit with a clear checkpoint message
 9. Push to GitHub
 
+### What gets saved vs what gets output
+
+- **Briefs** (from user): always saved to `.claude/briefs/` as `.md` files (Step 1)
+- **Plans** (Pass 1/2 output): output as chat text only — NOT saved to files. The user copies them to the web client for review.
+- **Code** (Pass 3 output): saved to production files, tested, committed, pushed
+
 ### Example usage
 
 ```
 /brief
-# Checkpoint 5.1 Pass 3b: Algorithms — Implementation
+# Checkpoint 5.1.3b Pass 1: Algorithms — Architectural Plan
 
 ## Context
 ...the full brief content pasted here...
 ```
 
-This saves the brief to `.claude/briefs/checkpoint_5_1_pass_3b_brief.md`, identifies it as Pass 3, and executes the implementation.
+This saves the brief to `.claude/briefs/checkpoint_5_1_3b_pass_1_brief.md`, identifies it as Pass 1, reads context files, researches AoN, and outputs the plan as chat text with a summary table.
 
 ## Contact
 
