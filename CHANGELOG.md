@@ -1,5 +1,29 @@
 # Changelog
 
+## [CP5.2] — 2026-04-25
+### Added
+- ANTHEM evaluator (Courageous Anthem, Option B ripple EV across ally strikes)
+- SOOTHE evaluator (1d10+4 healing, wound-severity-weighted targeting)
+- MORTAR_AIM, MORTAR_LOAD, MORTAR_LAUNCH evaluators (Light Mortar state machine)
+- TAUNT evaluator (Guardian class feature, -1 circumstance + off-guard)
+- INTERCEPT_ATTACK extended to 15-ft range vs taunted enemy
+- 6 new ActionType entries, 4 new Character flags
+- `[combatant_state]` scenario file section for pre-set mortar state
+- `_effective_status_bonus_attack/damage` helpers for mid-round Anthem
+- `conditions_removed` handling in `apply_outcome_to_state`
+- Mortar auto-deploy at combat start via `has_light_mortar` flag
+
+### Rules verified
+- Courageous Anthem (AoN: Spells — Courageous Anthem)
+- Soothe (AoN: Spells — Soothe)
+- Light Mortar action order: AIM → LOAD → LAUNCH (AoN: Innovations ID=4)
+- Taunt automatic, no check (AoN: Actions ID=3304)
+- Intercept Attack range extension with Taunt (AoN: Actions ID=3305)
+- Rallying Anthem / Inspire Defense deferred — requires L2 feat
+
+### Regressions
+- Strike Hard EV 8.55 (9th consecutive verification)
+
 ## [CP5.1.3c] — 2026-04-25
 ### Added
 - 14 action evaluators in `pf2e/actions.py`: END_TURN, RAISE_SHIELD, PLANT_BANNER,

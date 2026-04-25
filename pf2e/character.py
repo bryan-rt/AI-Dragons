@@ -75,6 +75,11 @@ class Character:
     # Commander class feature: can carry/plant a war banner and activate tactics.
     # (AoN: https://2e.aonprd.com/Classes.aspx?ID=66)
     has_commander_banner: bool = False
+    # CP5.2 class feature flags
+    has_courageous_anthem: bool = False  # Bard cantrip (AoN: Spells — Courageous Anthem)
+    has_soothe: bool = False             # Occult spell slot (AoN: Spells — Soothe)
+    has_light_mortar: bool = False       # Inventor innovation (AoN: Innovations ID=4)
+    has_taunt: bool = False              # Guardian class feature (AoN: Actions ID=3304)
 
 
 @dataclass

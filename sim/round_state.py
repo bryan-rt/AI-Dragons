@@ -76,7 +76,12 @@ class CombatantSnapshot:
             status_bonus_attack=state.status_bonus_attack,
             status_bonus_damage=state.status_bonus_damage,
             map_count=0,
-            conditions=frozenset(),
+            conditions=frozenset(
+                # Auto-deploy Light Mortar at combat start for Inventors.
+                # (AoN: https://2e.aonprd.com/Innovations.aspx?ID=4)
+                {"mortar_deployed"} if state.character.has_light_mortar
+                else set()
+            ),
         )
 
 
@@ -157,6 +162,15 @@ class RoundState:
         )
         for sq in scenario.squadmates:
             pcs[sq.character.name] = CombatantSnapshot.from_combatant_state(sq)
+
+        # Apply pre-set conditions from [combatant_state] section
+        for name, extra_conds in scenario.combatant_conditions.items():
+            if name in pcs:
+                pcs[name] = replace(
+                    pcs[name],
+                    conditions=pcs[name].conditions | extra_conds,
+                )
+
         enemies = {
             e.name: EnemySnapshot.from_enemy_state(e)
             for e in scenario.enemies

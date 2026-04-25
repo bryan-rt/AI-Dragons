@@ -138,6 +138,61 @@ def _pc_candidates(
     # ACTIVATE_TACTIC: one per prepared tactic with sufficient actions
     _add_tactic_candidates(actor, state, actor_name, actions)
 
+    # ANTHEM: if Bard with Courageous Anthem and anthem not yet active
+    if (actor.character.has_courageous_anthem
+            and not state.anthem_active
+            and actor.actions_remaining >= 1):
+        actions.append(Action(
+            type=ActionType.ANTHEM, actor_name=actor_name, action_cost=1,
+        ))
+
+    # SOOTHE: if has spell and slot unused, 2 actions, wounded ally exists
+    if (actor.character.has_soothe
+            and "soothe_used" not in actor.conditions
+            and actor.actions_remaining >= 2):
+        has_wounded = any(
+            pc.current_hp > 0 and pc.current_hp < max_hp(pc.character)
+            for pc in state.pcs.values()
+        )
+        if has_wounded:
+            actions.append(Action(
+                type=ActionType.SOOTHE, actor_name=actor_name, action_cost=2,
+            ))
+
+    # MORTAR sequence
+    if actor.character.has_light_mortar:
+        if ("mortar_deployed" in actor.conditions
+                and "mortar_aimed" not in actor.conditions
+                and actor.actions_remaining >= 1):
+            actions.append(Action(
+                type=ActionType.MORTAR_AIM, actor_name=actor_name, action_cost=1,
+            ))
+        if ("mortar_aimed" in actor.conditions
+                and "mortar_loaded" not in actor.conditions
+                and actor.actions_remaining >= 1):
+            actions.append(Action(
+                type=ActionType.MORTAR_LOAD, actor_name=actor_name, action_cost=1,
+            ))
+        if ("mortar_aimed" in actor.conditions
+                and "mortar_loaded" in actor.conditions
+                and actor.actions_remaining >= 1):
+            actions.append(Action(
+                type=ActionType.MORTAR_LAUNCH, actor_name=actor_name, action_cost=1,
+            ))
+
+    # TAUNT: Guardian only, one at a time, enemy within 30 ft
+    if (actor.character.has_taunt
+            and not any(c.startswith("taunting_") for c in actor.conditions)
+            and actor.actions_remaining >= 1):
+        for en_name, enemy in state.enemies.items():
+            if enemy.current_hp <= 0:
+                continue
+            if distance_ft(actor.position, enemy.position) <= 30:
+                actions.append(Action(
+                    type=ActionType.TAUNT, actor_name=actor_name,
+                    action_cost=1, target_name=en_name,
+                ))
+
     # Always include END_TURN
     actions.append(_end_turn(actor_name))
 

@@ -276,6 +276,7 @@ def make_rook() -> Character:
             Skill.SOCIETY: ProficiencyRank.TRAINED,
             Skill.CRAFTING: ProficiencyRank.TRAINED,
         },
+        has_taunt=True,
     )
 
 
@@ -327,6 +328,8 @@ def make_dalai() -> Character:
             "Bardic": ProficiencyRank.TRAINED,
             "Warfare": ProficiencyRank.TRAINED,
         },
+        has_courageous_anthem=True,
+        has_soothe=True,
     )
 
 
@@ -379,6 +382,7 @@ def make_erisen() -> Character:
             "Engineering": ProficiencyRank.TRAINED,
             "Alkenstar": ProficiencyRank.TRAINED,
         },
+        has_light_mortar=True,
     )
 
 

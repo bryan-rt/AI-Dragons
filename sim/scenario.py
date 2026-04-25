@@ -84,6 +84,10 @@ class Scenario:
     initiative_seed: int = 42
     initiative_explicit: dict[str, int] = field(default_factory=dict)
 
+    # Pre-set conditions per combatant name (from [combatant_state] section).
+    # Applied to CombatantSnapshot.conditions during RoundState construction.
+    combatant_conditions: dict[str, frozenset[str]] = field(default_factory=dict)
+
     def build_tactic_context(self) -> TacticContext:
         """Produce a fresh TacticContext with GridSpatialQueries wired in.
 
@@ -311,6 +315,31 @@ def _parse_initiative(text: str | None) -> tuple[int, dict[str, int]]:
     return (seed, explicit)
 
 
+def _parse_combatant_state(text: str | None) -> dict[str, frozenset[str]]:
+    """Parse [combatant_state] section into {name: frozenset of condition tags}.
+
+    Format: one line per combatant, comma-separated tags.
+        Erisen = mortar_aimed, mortar_loaded
+    """
+    if not text:
+        return {}
+    result: dict[str, frozenset[str]] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        name, _, tags_str = line.partition("=")
+        name = name.strip()
+        tags = frozenset(
+            t.strip() for t in tags_str.split(",") if t.strip()
+        )
+        if tags:
+            result[name] = tags
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -347,6 +376,9 @@ def parse_scenario(text: str) -> Scenario:
     enemy_specs = _parse_enemies(sections.get("enemies", ""))
     initiative_seed, initiative_explicit = _parse_initiative(
         sections.get("initiative"),
+    )
+    combatant_conditions = _parse_combatant_state(
+        sections.get("combatant_state"),
     )
 
     # Commander required
@@ -404,4 +436,5 @@ def parse_scenario(text: str) -> Scenario:
         enemies=enemies,
         initiative_seed=initiative_seed,
         initiative_explicit=initiative_explicit,
+        combatant_conditions=combatant_conditions,
     )

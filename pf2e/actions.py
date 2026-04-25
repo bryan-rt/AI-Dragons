@@ -47,7 +47,6 @@ class ActionType(Enum):
     - Guardian reactions: INTERCEPT_ATTACK, EVER_READY
     - Control: END_TURN
 
-    CP5.2 will add Taunt, healing, compositions, spells.
     CP5.3 will add Aid, Recall Knowledge, Seek/Hide/Sneak.
     """
     STRIDE = auto()
@@ -65,6 +64,13 @@ class ActionType(Enum):
     INTERCEPT_ATTACK = auto()
     EVER_READY = auto()
     END_TURN = auto()
+    # CP5.2: class features
+    ANTHEM = auto()           # Dalai: Courageous Anthem composition
+    SOOTHE = auto()           # Dalai: Soothe occult spell
+    MORTAR_AIM = auto()       # Erisen: Light Mortar aim
+    MORTAR_LOAD = auto()      # Erisen: Light Mortar load
+    MORTAR_LAUNCH = auto()    # Erisen: Light Mortar fire
+    TAUNT = auto()            # Rook: Guardian Taunt
 
 
 @dataclass(frozen=True)
@@ -422,6 +428,26 @@ def evaluate_strike(
                        ineligibility_reason="Actor not found")
 
 
+def _effective_status_bonus_attack(
+    actor: CombatantSnapshot, state: RoundState,
+) -> int:
+    """Effective status bonus to attack rolls, accounting for mid-round Anthem.
+
+    If Anthem was cast earlier this turn, it may not yet be reflected on the
+    actor's snapshot. This helper ensures STRIKE sees the bonus.
+    (AoN: https://2e.aonprd.com/Spells.aspx — Courageous Anthem)
+    Flagged for CP6 multi-buff refactor.
+    """
+    return max(actor.status_bonus_attack, 1 if state.anthem_active else 0)
+
+
+def _effective_status_bonus_damage(
+    actor: CombatantSnapshot, state: RoundState,
+) -> int:
+    """Effective status bonus to damage, accounting for mid-round Anthem."""
+    return max(actor.status_bonus_damage, 1 if state.anthem_active else 0)
+
+
 def _evaluate_pc_strike(
     action: Action, state: RoundState, actor: CombatantSnapshot,
 ) -> ActionResult:
@@ -445,6 +471,9 @@ def _evaluate_pc_strike(
     # map_penalty expects 1-indexed attack_number
     penalty = map_penalty(actor.map_count + 1, equipped.weapon.is_agile)
     bonus = attack_bonus(actor, equipped, penalty)  # type: ignore[arg-type]
+    # Apply mid-round Anthem bonus if not already on snapshot
+    anthem_atk_delta = _effective_status_bonus_attack(actor, state) - actor.status_bonus_attack
+    bonus += anthem_atk_delta
 
     # Effective AC: off-guard from condition OR prone
     effective_off_guard = target.off_guard or target.prone
@@ -453,6 +482,9 @@ def _evaluate_pc_strike(
     outcomes_d20 = enumerate_d20_outcomes(bonus, effective_ac)
 
     hit_dmg = damage_avg(actor, equipped)  # type: ignore[arg-type]
+    # Apply mid-round Anthem damage bonus
+    anthem_dmg_delta = _effective_status_bonus_damage(actor, state) - actor.status_bonus_damage
+    hit_dmg += anthem_dmg_delta
     deadly = equipped.weapon.deadly_die
     deadly_extra = die_average(deadly) if deadly else 0.0
     crit_dmg = hit_dmg * 2 + deadly_extra
@@ -954,9 +986,16 @@ def evaluate_intercept_attack(
         return ActionResult(action=action, eligible=False,
                            ineligibility_reason="Target ally not found")
 
-    if _grid_distance_ft(actor.position, target_ally.position) > 10:
+    # Extended range when attacking enemy is Rook's taunted target.
+    # (AoN: https://2e.aonprd.com/Actions.aspx?ID=3305)
+    taunted_key = f"taunted_by_{action.actor_name.lower().replace(' ', '_')}"
+    attacking_enemy = state.enemies.get(action.target_names[0]) if action.target_names else None
+    taunted = attacking_enemy is not None and taunted_key in attacking_enemy.conditions
+    intercept_range = 15 if taunted else 10
+
+    if _grid_distance_ft(actor.position, target_ally.position) > intercept_range:
         return ActionResult(action=action, eligible=False,
-                           ineligibility_reason="Ally not within 10 ft")
+                           ineligibility_reason=f"Ally not within {intercept_range} ft")
 
     resistance = guardians_armor_resistance(actor.character.level)
     return ActionResult(
@@ -1058,7 +1097,310 @@ def evaluate_activate_tactic(
 
 
 # ---------------------------------------------------------------------------
-# Step 5: Dispatcher
+# CP5.2: ANTHEM
+# ---------------------------------------------------------------------------
+
+def _estimate_hit_probability(actor: CombatantSnapshot, state: RoundState) -> float:
+    """Rough hit probability for this actor's primary weapon vs average enemy AC."""
+    living_enemies = [e for e in state.enemies.values() if e.current_hp > 0]
+    avg_ac = sum(e.ac for e in living_enemies) / max(1, len(living_enemies)) if living_enemies else 15.0
+    # Compute a rough attack bonus from character data
+    if actor.character.equipped_weapons:
+        eq = actor.character.equipped_weapons[0]
+        bonus = attack_bonus(actor, eq, 0)  # type: ignore[arg-type]
+    else:
+        bonus = 0
+    bonus += _effective_status_bonus_attack(actor, state) - actor.status_bonus_attack
+    hit_range = 20 - max(0, int(avg_ac) - bonus - 1)
+    return max(0.05, min(0.95, hit_range / 20))
+
+
+def _estimate_avg_strike_damage(actor: CombatantSnapshot, state: RoundState) -> float:
+    """Rough average damage per hit for this actor's primary weapon."""
+    if actor.character.equipped_weapons:
+        eq = actor.character.equipped_weapons[0]
+        dmg = damage_avg(actor, eq)  # type: ignore[arg-type]
+        dmg += _effective_status_bonus_damage(actor, state) - actor.status_bonus_damage
+        return dmg
+    return 5.0
+
+
+def evaluate_anthem(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Cast Courageous Anthem: +1 status to attack, damage, saves vs fear.
+
+    Score = ripple EV across expected ally strikes remaining this round.
+    Only one composition can be active at a time. Anthem is Dalai's only
+    composition at L1. Composition conflict handling deferred to CP5.3+.
+    (AoN: https://2e.aonprd.com/Spells.aspx — Courageous Anthem)
+    (AoN: https://2e.aonprd.com/Traits.aspx — Composition)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None or not actor.character.has_courageous_anthem:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No Courageous Anthem")
+    if state.anthem_active:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Anthem already active")
+
+    anthem_ev = 0.0
+    for ally_name, ally_snap in state.pcs.items():
+        if ally_name == action.actor_name or ally_snap.current_hp <= 0:
+            continue
+        # 60-ft emanation range
+        if _grid_distance_ft(actor.position, ally_snap.position) > 60:
+            continue
+        remaining_strikes = min(ally_snap.actions_remaining, 2)
+        if remaining_strikes <= 0:
+            continue
+        hit_prob = _estimate_hit_probability(ally_snap, state)
+        avg_dmg = _estimate_avg_strike_damage(ally_snap, state)
+        # +1 attack: ~5% more hits × full damage
+        # +1 damage: existing hit prob × 1 more per hit
+        # CP6 calibration target: remaining_strikes estimation.
+        anthem_ev += remaining_strikes * (0.05 * avg_dmg + hit_prob * 1.0)
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            conditions_applied={action.actor_name: ("anthem_active",)},
+            description=f"Cast Courageous Anthem (EV +{anthem_ev:.2f})",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# CP5.2: SOOTHE
+# ---------------------------------------------------------------------------
+
+def evaluate_soothe(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Cast Soothe on the most wounded ally. 2 actions, 1d10+4 HP (avg 9.5).
+
+    One cast per encounter at L1 (tracked via 'soothe_used' condition).
+    (AoN: https://2e.aonprd.com/Spells.aspx — Soothe)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None or not actor.character.has_soothe:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No Soothe spell")
+    if "soothe_used" in actor.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Soothe already used this encounter")
+    if actor.actions_remaining < 2:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Soothe requires 2 actions")
+
+    avg_heal = die_average("d10") + 4  # 9.5
+    best_target: str = ""
+    best_ev = 0.0
+
+    for ally_name, ally_snap in state.pcs.items():
+        if ally_snap.current_hp <= 0:
+            continue
+        ally_max = max_hp(ally_snap.character)
+        if ally_max <= 0 or ally_snap.current_hp >= ally_max:
+            continue
+        if _grid_distance_ft(actor.position, ally_snap.position) > 30:
+            continue
+        effective_heal = min(avg_heal, ally_max - ally_snap.current_hp)
+        wound_factor = 1.0 + (1.0 - ally_snap.current_hp / ally_max)
+        # Support-role multiplier. CP6 refactor target: use role_weight.
+        from sim.search import role_multiplier
+        ev = effective_heal * wound_factor * role_multiplier(ally_name)
+        if ev > best_ev:
+            best_ev = ev
+            best_target = ally_name
+
+    if not best_target:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No wounded allies in range")
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            hp_changes={best_target: avg_heal},
+            conditions_applied={action.actor_name: ("soothe_used",)},
+            description=f"Soothe {best_target} (heals ~{avg_heal:.1f} HP)",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# CP5.2: MORTAR_AIM, MORTAR_LOAD, MORTAR_LAUNCH
+# ---------------------------------------------------------------------------
+
+def evaluate_mortar_aim(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Aim Light Mortar at target. Requires mortar deployed.
+    (AoN: https://2e.aonprd.com/Innovations.aspx?ID=4)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None or not actor.character.has_light_mortar:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No Light Mortar")
+    if "mortar_deployed" not in actor.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Mortar not deployed")
+    if "mortar_aimed" in actor.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Mortar already aimed")
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            conditions_applied={action.actor_name: ("mortar_aimed",)},
+            description="Aim Light Mortar",
+        ),),
+    )
+
+
+def evaluate_mortar_load(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Load Light Mortar. Requires mortar aimed.
+    (AoN: https://2e.aonprd.com/Innovations.aspx?ID=4)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not found")
+    if "mortar_aimed" not in actor.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Must aim before loading")
+    if "mortar_loaded" in actor.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Mortar already loaded")
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            conditions_applied={action.actor_name: ("mortar_loaded",)},
+            description="Load Light Mortar",
+        ),),
+    )
+
+
+def evaluate_mortar_launch(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Fire Light Mortar. 2d6 bludgeoning in 10-ft burst, Reflex vs class DC.
+    Clears aimed+loaded conditions. Has attack trait (increments MAP).
+    (AoN: https://2e.aonprd.com/Innovations.aspx?ID=4)
+    """
+    from pf2e.combat_math import SiegeWeapon, expected_aoe_damage, EnemyTarget
+    from pf2e.types import DamageType
+
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not found")
+    if "mortar_aimed" not in actor.conditions or "mortar_loaded" not in actor.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Mortar not aimed and loaded")
+
+    mortar = SiegeWeapon(
+        name="Light Mortar",
+        damage_die="d6",
+        base_damage_dice=2,
+        damage_type=DamageType.BLUDGEONING,
+        save_type=SaveType.REFLEX,
+        aoe_shape="burst",
+        aoe_radius_ft=10,
+        range_increment=120,
+    )
+
+    enemy_targets = [
+        EnemyTarget(name=e.name, ac=e.ac, saves=e.saves)
+        for e in state.enemies.values() if e.current_hp > 0
+    ]
+    if not enemy_targets:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No living enemies")
+
+    score = expected_aoe_damage(actor.character, mortar, enemy_targets)
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            hp_changes={t.name: -score / len(enemy_targets) for t in enemy_targets},
+            conditions_removed={action.actor_name: ("mortar_aimed", "mortar_loaded")},
+            description=f"Launch Mortar (EV {score:.2f} across {len(enemy_targets)} target(s))",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# CP5.2: TAUNT
+# ---------------------------------------------------------------------------
+
+def evaluate_taunt(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Taunt an enemy. Automatic, no check. -1 circumstance if enemy targets
+    allies without targeting Rook, plus off-guard until their next turn.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=3304)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None or not actor.character.has_taunt:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No Taunt class feature")
+    if any(c.startswith("taunting_") for c in actor.conditions):
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Already taunting an enemy")
+
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Invalid or dead target")
+    if _grid_distance_ft(actor.position, target.position) > 30:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Target beyond 30 ft")
+
+    # Score: EV of -1 circumstance + off-guard when enemy targets allies
+    num_pcs = max(1, _count_pcs_in_enemy_reach(target, state))
+    p_targets_ally = 1.0 - (1.0 / num_pcs)
+    remaining_attacks = target.num_attacks_per_turn
+
+    # Rough enemy damage per attack
+    if target.damage_dice and "d" in target.damage_dice:
+        parts = target.damage_dice.split("d", 1)
+        avg_dmg = int(parts[0]) * die_average(f"d{parts[1]}") + target.damage_bonus
+    else:
+        avg_dmg = float(target.damage_bonus)
+
+    # -1 circumstance ≈ 5% fewer hits
+    penalty_ev = p_targets_ally * remaining_attacks * avg_dmg * 0.05
+    # Off-guard ≈ +10% hit chance for allies × rough ally damage
+    off_guard_ev = p_targets_ally * remaining_attacks * 0.10 * 5.0
+    taunt_ev = penalty_ev + off_guard_ev
+
+    taunted_key = f"taunted_by_{action.actor_name.lower().replace(' ', '_')}"
+    taunting_key = f"taunting_{action.target_name}"
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            conditions_applied={
+                action.target_name: (taunted_key,),
+                action.actor_name: (taunting_key,),
+            },
+            description=f"Taunt {action.target_name} (EV +{taunt_ev:.2f})",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dispatcher
 # ---------------------------------------------------------------------------
 
 _ACTION_EVALUATORS: dict[ActionType, Callable[..., ActionResult]] = {
@@ -1076,6 +1418,13 @@ _ACTION_EVALUATORS: dict[ActionType, Callable[..., ActionResult]] = {
     ActionType.SHIELD_BLOCK: evaluate_shield_block,
     ActionType.INTERCEPT_ATTACK: evaluate_intercept_attack,
     ActionType.ACTIVATE_TACTIC: evaluate_activate_tactic,
+    # CP5.2
+    ActionType.ANTHEM: evaluate_anthem,
+    ActionType.SOOTHE: evaluate_soothe,
+    ActionType.MORTAR_AIM: evaluate_mortar_aim,
+    ActionType.MORTAR_LOAD: evaluate_mortar_load,
+    ActionType.MORTAR_LAUNCH: evaluate_mortar_launch,
+    ActionType.TAUNT: evaluate_taunt,
 }
 
 

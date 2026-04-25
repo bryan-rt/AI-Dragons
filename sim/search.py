@@ -203,6 +203,21 @@ def apply_outcome_to_state(
                 name,
                 reactions_available=max(0, pc.reactions_available - count),
             )
+    # Remove conditions listed in conditions_removed
+    for name, conds in outcome.conditions_removed.items():
+        if name in result.pcs:
+            new_conds = result.pcs[name].conditions - set(conds)
+            result = result.with_pc_update(name, conditions=new_conds)
+        elif name in result.enemies:
+            new_conds = result.enemies[name].conditions - set(conds)
+            result = result.with_enemy_update(name, conditions=new_conds)
+    # Anthem activation: if any PC's conditions_applied contains "anthem_active",
+    # set the round-level anthem_active flag on RoundState.
+    # (AoN: https://2e.aonprd.com/Spells.aspx — Courageous Anthem)
+    for name, conds in outcome.conditions_applied.items():
+        if "anthem_active" in conds:
+            result = replace(result, anthem_active=True)
+            break
     return result
 
 

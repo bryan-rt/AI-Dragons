@@ -574,8 +574,8 @@ class TestActivateTactic:
 
 class TestDispatcher:
 
-    def test_dispatcher_all_14_types_registered(self) -> None:
-        """All 14 action types (excluding EVER_READY) have evaluators."""
+    def test_dispatcher_all_20_types_registered(self) -> None:
+        """All 20 action types (excluding EVER_READY) have evaluators."""
         from pf2e.actions import _ACTION_EVALUATORS
         expected = {
             ActionType.END_TURN, ActionType.PLANT_BANNER,
@@ -585,6 +585,10 @@ class TestDispatcher:
             ActionType.DEMORALIZE, ActionType.CREATE_A_DIVERSION,
             ActionType.FEINT, ActionType.SHIELD_BLOCK,
             ActionType.INTERCEPT_ATTACK, ActionType.ACTIVATE_TACTIC,
+            # CP5.2
+            ActionType.ANTHEM, ActionType.SOOTHE,
+            ActionType.MORTAR_AIM, ActionType.MORTAR_LOAD,
+            ActionType.MORTAR_LAUNCH, ActionType.TAUNT,
         }
         assert set(_ACTION_EVALUATORS.keys()) == expected
 
@@ -627,3 +631,354 @@ class TestIntegration:
             (r for r in recommendations if r.actor_name == "Aetregan"), None,
         )
         assert aetregan_rec is not None
+
+
+# ---------------------------------------------------------------------------
+# CP5.2: New evaluator tests
+# ---------------------------------------------------------------------------
+
+class TestAnthem:
+
+    def test_anthem_eligible_for_dalai(self) -> None:
+        from dataclasses import replace as dc_replace
+        state = dc_replace(_quick_state(), anthem_active=False)
+        action = Action(type=ActionType.ANTHEM, actor_name="Dalai Alpaca", action_cost=1)
+        from pf2e.actions import evaluate_anthem
+        result = evaluate_anthem(action, state)
+        assert result.eligible
+
+    def test_anthem_ineligible_for_non_bard(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.ANTHEM, actor_name="Rook", action_cost=1)
+        from pf2e.actions import evaluate_anthem
+        result = evaluate_anthem(action, state)
+        assert not result.eligible
+
+    def test_anthem_ineligible_when_already_active(self) -> None:
+        from dataclasses import replace as dc_replace
+        state = dc_replace(_quick_state(), anthem_active=True)
+        action = Action(type=ActionType.ANTHEM, actor_name="Dalai Alpaca", action_cost=1)
+        from pf2e.actions import evaluate_anthem
+        result = evaluate_anthem(action, state)
+        assert not result.eligible
+
+    def test_anthem_score_positive_with_allies(self) -> None:
+        from dataclasses import replace as dc_replace
+        state = dc_replace(_quick_state(), anthem_active=False)
+        action = Action(type=ActionType.ANTHEM, actor_name="Dalai Alpaca", action_cost=1)
+        from pf2e.actions import evaluate_anthem
+        result = evaluate_anthem(action, state)
+        assert result.eligible
+        assert "anthem_active" in result.outcomes[0].conditions_applied.get("Dalai Alpaca", ())
+
+    def test_anthem_propagates_to_round_state(self) -> None:
+        """anthem_active condition should set RoundState.anthem_active via apply_outcome_to_state."""
+        from dataclasses import replace as dc_replace
+        from sim.search import apply_outcome_to_state
+        state = dc_replace(_quick_state(), anthem_active=False)
+        assert not state.anthem_active
+        outcome = ActionOutcome(
+            probability=1.0,
+            conditions_applied={"Dalai Alpaca": ("anthem_active",)},
+        )
+        new_state = apply_outcome_to_state(outcome, state)
+        assert new_state.anthem_active
+
+
+class TestSoothe:
+
+    def test_soothe_eligible_when_ally_wounded(self) -> None:
+        state = _quick_state(pc_overrides={"Rook": {"current_hp": 10}})
+        action = Action(type=ActionType.SOOTHE, actor_name="Dalai Alpaca", action_cost=2)
+        from pf2e.actions import evaluate_soothe
+        result = evaluate_soothe(action, state)
+        assert result.eligible
+        assert result.outcomes[0].hp_changes  # healing applied
+
+    def test_soothe_ineligible_when_slot_used(self) -> None:
+        state = _quick_state(
+            pc_overrides={
+                "Rook": {"current_hp": 10},
+                "Dalai Alpaca": {"conditions": frozenset({"soothe_used"})},
+            },
+        )
+        action = Action(type=ActionType.SOOTHE, actor_name="Dalai Alpaca", action_cost=2)
+        from pf2e.actions import evaluate_soothe
+        result = evaluate_soothe(action, state)
+        assert not result.eligible
+
+    def test_soothe_ineligible_when_no_wounded(self) -> None:
+        state = _quick_state()  # all PCs at full HP
+        action = Action(type=ActionType.SOOTHE, actor_name="Dalai Alpaca", action_cost=2)
+        from pf2e.actions import evaluate_soothe
+        result = evaluate_soothe(action, state)
+        assert not result.eligible
+
+    def test_soothe_ineligible_when_actions_less_than_2(self) -> None:
+        state = _quick_state(pc_overrides={
+            "Rook": {"current_hp": 10},
+            "Dalai Alpaca": {"actions_remaining": 1},
+        })
+        action = Action(type=ActionType.SOOTHE, actor_name="Dalai Alpaca", action_cost=2)
+        from pf2e.actions import evaluate_soothe
+        result = evaluate_soothe(action, state)
+        assert not result.eligible
+
+    def test_soothe_sets_used_condition(self) -> None:
+        state = _quick_state(pc_overrides={"Rook": {"current_hp": 10}})
+        action = Action(type=ActionType.SOOTHE, actor_name="Dalai Alpaca", action_cost=2)
+        from pf2e.actions import evaluate_soothe
+        result = evaluate_soothe(action, state)
+        assert "soothe_used" in result.outcomes[0].conditions_applied.get("Dalai Alpaca", ())
+
+    def test_soothe_ineligible_for_non_bard(self) -> None:
+        state = _quick_state(pc_overrides={"Rook": {"current_hp": 10}})
+        action = Action(type=ActionType.SOOTHE, actor_name="Rook", action_cost=2)
+        from pf2e.actions import evaluate_soothe
+        result = evaluate_soothe(action, state)
+        assert not result.eligible
+
+
+class TestMortarSequence:
+
+    def test_mortar_auto_deployed_at_combat_start(self) -> None:
+        state = _quick_state()
+        erisen = state.pcs["Erisen"]
+        assert "mortar_deployed" in erisen.conditions
+
+    def test_mortar_aim_eligible_when_deployed(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.MORTAR_AIM, actor_name="Erisen", action_cost=1)
+        from pf2e.actions import evaluate_mortar_aim
+        result = evaluate_mortar_aim(action, state)
+        assert result.eligible
+
+    def test_mortar_aim_ineligible_when_already_aimed(self) -> None:
+        state = _quick_state(pc_overrides={
+            "Erisen": {"conditions": frozenset({"mortar_deployed", "mortar_aimed"})},
+        })
+        action = Action(type=ActionType.MORTAR_AIM, actor_name="Erisen", action_cost=1)
+        from pf2e.actions import evaluate_mortar_aim
+        result = evaluate_mortar_aim(action, state)
+        assert not result.eligible
+
+    def test_mortar_load_eligible_when_aimed(self) -> None:
+        state = _quick_state(pc_overrides={
+            "Erisen": {"conditions": frozenset({"mortar_deployed", "mortar_aimed"})},
+        })
+        action = Action(type=ActionType.MORTAR_LOAD, actor_name="Erisen", action_cost=1)
+        from pf2e.actions import evaluate_mortar_load
+        result = evaluate_mortar_load(action, state)
+        assert result.eligible
+
+    def test_mortar_load_ineligible_when_not_aimed(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.MORTAR_LOAD, actor_name="Erisen", action_cost=1)
+        from pf2e.actions import evaluate_mortar_load
+        result = evaluate_mortar_load(action, state)
+        assert not result.eligible
+
+    def test_mortar_launch_eligible_when_aimed_and_loaded(self) -> None:
+        state = _quick_state(pc_overrides={
+            "Erisen": {"conditions": frozenset({"mortar_deployed", "mortar_aimed", "mortar_loaded"})},
+        })
+        action = Action(type=ActionType.MORTAR_LAUNCH, actor_name="Erisen", action_cost=1)
+        from pf2e.actions import evaluate_mortar_launch
+        result = evaluate_mortar_launch(action, state)
+        assert result.eligible
+        assert result.expected_damage_dealt > 0
+
+    def test_mortar_launch_ineligible_when_only_aimed(self) -> None:
+        state = _quick_state(pc_overrides={
+            "Erisen": {"conditions": frozenset({"mortar_deployed", "mortar_aimed"})},
+        })
+        action = Action(type=ActionType.MORTAR_LAUNCH, actor_name="Erisen", action_cost=1)
+        from pf2e.actions import evaluate_mortar_launch
+        result = evaluate_mortar_launch(action, state)
+        assert not result.eligible
+
+    def test_mortar_launch_clears_aimed_and_loaded(self) -> None:
+        state = _quick_state(pc_overrides={
+            "Erisen": {"conditions": frozenset({"mortar_deployed", "mortar_aimed", "mortar_loaded"})},
+        })
+        action = Action(type=ActionType.MORTAR_LAUNCH, actor_name="Erisen", action_cost=1)
+        from pf2e.actions import evaluate_mortar_launch
+        result = evaluate_mortar_launch(action, state)
+        removed = result.outcomes[0].conditions_removed.get("Erisen", ())
+        assert "mortar_aimed" in removed
+        assert "mortar_loaded" in removed
+
+    def test_mortar_full_sequence_state_transitions(self) -> None:
+        """AIM → LOAD → LAUNCH sequence produces correct conditions."""
+        from sim.search import apply_outcome_to_state
+        from pf2e.actions import evaluate_mortar_aim, evaluate_mortar_load, evaluate_mortar_launch
+
+        state = _quick_state()
+        erisen = state.pcs["Erisen"]
+        assert "mortar_deployed" in erisen.conditions
+
+        # AIM
+        aim = evaluate_mortar_aim(
+            Action(type=ActionType.MORTAR_AIM, actor_name="Erisen", action_cost=1),
+            state,
+        )
+        state = apply_outcome_to_state(aim.outcomes[0], state)
+        assert "mortar_aimed" in state.pcs["Erisen"].conditions
+
+        # LOAD
+        load = evaluate_mortar_load(
+            Action(type=ActionType.MORTAR_LOAD, actor_name="Erisen", action_cost=1),
+            state,
+        )
+        state = apply_outcome_to_state(load.outcomes[0], state)
+        assert "mortar_loaded" in state.pcs["Erisen"].conditions
+
+        # LAUNCH
+        launch = evaluate_mortar_launch(
+            Action(type=ActionType.MORTAR_LAUNCH, actor_name="Erisen", action_cost=1),
+            state,
+        )
+        state = apply_outcome_to_state(launch.outcomes[0], state)
+        assert "mortar_aimed" not in state.pcs["Erisen"].conditions
+        assert "mortar_loaded" not in state.pcs["Erisen"].conditions
+        assert "mortar_deployed" in state.pcs["Erisen"].conditions
+
+
+class TestTaunt:
+
+    def test_taunt_eligible_for_rook(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.TAUNT, actor_name="Rook", action_cost=1,
+                       target_name="Bandit1")
+        from pf2e.actions import evaluate_taunt
+        result = evaluate_taunt(action, state)
+        assert result.eligible
+
+    def test_taunt_ineligible_for_non_guardian(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.TAUNT, actor_name="Aetregan", action_cost=1,
+                       target_name="Bandit1")
+        from pf2e.actions import evaluate_taunt
+        result = evaluate_taunt(action, state)
+        assert not result.eligible
+
+    def test_taunt_ineligible_when_already_taunting(self) -> None:
+        state = _quick_state(pc_overrides={
+            "Rook": {"conditions": frozenset({"taunting_Bandit1"})},
+        })
+        action = Action(type=ActionType.TAUNT, actor_name="Rook", action_cost=1,
+                       target_name="Bandit1")
+        from pf2e.actions import evaluate_taunt
+        result = evaluate_taunt(action, state)
+        assert not result.eligible
+
+    def test_taunt_sets_conditions(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.TAUNT, actor_name="Rook", action_cost=1,
+                       target_name="Bandit1")
+        from pf2e.actions import evaluate_taunt
+        result = evaluate_taunt(action, state)
+        conds = result.outcomes[0].conditions_applied
+        assert "taunted_by_rook" in conds.get("Bandit1", ())
+        assert "taunting_Bandit1" in conds.get("Rook", ())
+
+    def test_taunt_ineligible_out_of_range(self) -> None:
+        state = _quick_state(pc_overrides={"Rook": {"position": (0, 0)}})
+        action = Action(type=ActionType.TAUNT, actor_name="Rook", action_cost=1,
+                       target_name="Bandit1")
+        from pf2e.actions import evaluate_taunt
+        result = evaluate_taunt(action, state)
+        assert not result.eligible
+
+
+class TestInterceptAttackExtension:
+
+    def test_intercept_range_10ft_without_taunt(self) -> None:
+        """Default 10-ft range when enemy is not taunted."""
+        from pf2e.actions import evaluate_intercept_attack
+        state = _quick_state()
+        action = Action(
+            type=ActionType.INTERCEPT_ATTACK, actor_name="Rook",
+            action_cost=0, target_name="Aetregan",
+        )
+        result = evaluate_intercept_attack(action, state)
+        assert result.eligible  # Aetregan is adjacent to Rook
+
+    def test_intercept_range_15ft_with_taunted_enemy(self) -> None:
+        """Extended 15-ft range when damage comes from taunted enemy."""
+        from pf2e.actions import evaluate_intercept_attack
+        # Move ally 15 ft from Rook (3 diag = 15 ft via 5/10 rule)
+        state = _quick_state(
+            pc_overrides={"Aetregan": {"position": (3, 4)}},
+            enemy_overrides={"Bandit1": {"conditions": frozenset({"taunted_by_rook"})}},
+        )
+        action = Action(
+            type=ActionType.INTERCEPT_ATTACK, actor_name="Rook",
+            action_cost=0, target_name="Aetregan",
+            target_names=("Bandit1",),  # attacking enemy
+        )
+        result = evaluate_intercept_attack(action, state)
+        # Rook at (5,6), Aetregan at (3,4): distance = 2 diag = 15 ft
+        # With taunt, range is 15 ft → eligible
+        assert result.eligible
+
+
+class TestStrikeHelpers:
+
+    def test_effective_status_bonus_attack_no_anthem(self) -> None:
+        from pf2e.actions import _effective_status_bonus_attack
+        state = _quick_state()
+        rook = state.pcs["Rook"]
+        assert _effective_status_bonus_attack(rook, state) == rook.status_bonus_attack
+
+    def test_effective_status_bonus_attack_with_anthem(self) -> None:
+        from dataclasses import replace as dc_replace
+        from pf2e.actions import _effective_status_bonus_attack
+        state = dc_replace(_quick_state(), anthem_active=True)
+        rook = state.pcs["Rook"]
+        assert _effective_status_bonus_attack(rook, state) >= 1
+
+    def test_effective_bonus_uses_max(self) -> None:
+        """If snapshot already has +1 bonus, anthem doesn't double it."""
+        from dataclasses import replace as dc_replace
+        from pf2e.actions import _effective_status_bonus_attack
+        state = dc_replace(_quick_state(), anthem_active=True)
+        # Rook starts with anthem bonus from scenario (anthem_active=True at load)
+        rook = state.pcs["Rook"]
+        bonus = _effective_status_bonus_attack(rook, state)
+        assert bonus == max(rook.status_bonus_attack, 1)
+
+
+class TestScenarioCombatantState:
+
+    def test_combatant_state_section_sets_conditions(self) -> None:
+        from sim.scenario import parse_scenario
+        text = """
+[meta]
+name = mortar test
+
+[grid]
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . c g m . .
+. . . . i b . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+
+[enemies]
+m1 name=Bandit1 ac=15 ref=5 fort=3 will=2
+
+[combatant_state]
+Erisen = mortar_aimed, mortar_loaded
+"""
+        scenario = parse_scenario(text)
+        from sim.round_state import RoundState
+        state = RoundState.from_scenario(scenario, ["Erisen", "Bandit1"])
+        erisen = state.pcs["Erisen"]
+        assert "mortar_aimed" in erisen.conditions
+        assert "mortar_loaded" in erisen.conditions
+        assert "mortar_deployed" in erisen.conditions  # auto-deployed

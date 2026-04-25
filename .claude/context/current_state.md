@@ -1,43 +1,34 @@
 # Current State
 
-**Last updated:** CP5.1.3c complete (Steps 1-14).
+**Last updated:** CP5.2 complete.
 
 ## Latest Test Count
 
-**361 passing** (315 existing + 46 new).
+**393 passing** (362 prior + 31 new).
 
 ## Active Work
 
-**CP5.1.3c — Action Evaluators** (Pass 3 complete).
+**CP5.2 — Class Features** (Pass 3 complete).
 
 ### Completed (this checkpoint)
-1. Added `map_count: int = 0` and `conditions: frozenset[str]` to `CombatantSnapshot`
-2. Added `conditions: frozenset[str]` to `EnemySnapshot`
-3. Updated `apply_outcome_to_state` in `sim/search.py` to union non-hardcoded conditions
-4. Ever Ready initialization comment in `sim/initiative.py`
-5. 14 action evaluators in `pf2e/actions.py`
-6. `evaluate_action()` dispatcher (14 types, EVER_READY excluded)
-7. `generate_candidates()` in `sim/candidates.py`
-8. Wired real callables into `simulate_round()` via `run_simulation()`
-9. Action economy tracking (MAP + actions_remaining) in beam search loop
-10. EV-collapse path extended to apply non-HP state changes
-11. `sim/cli.py` + `sim/__main__.py` (CLI entry point)
-12. `RoundRecommendation` + `format_recommendation()` in `sim/search.py`
-13. 46 new tests: `tests/test_evaluators.py`, `tests/test_cli.py`
-14. Full regression: 361 passing, Strike Hard EV 8.55 (8th verification)
-
-### Modules added/modified
-- `pf2e/actions.py` — 14 evaluators + dispatcher + geometry helpers
-- `sim/candidates.py` — candidate action generation (new)
-- `sim/search.py` — RoundRecommendation, format_recommendation, run_simulation, action economy tracking
-- `sim/cli.py` — CLI entry point (new)
-- `sim/__main__.py` — python -m sim support (new)
-- `tests/test_evaluators.py` — 46 evaluator + integration tests (new)
-- `tests/test_cli.py` — 2 CLI smoke tests (new)
+1. 6 new ActionType entries: ANTHEM, SOOTHE, MORTAR_AIM, MORTAR_LOAD, MORTAR_LAUNCH, TAUNT
+2. 4 new Character flags: has_courageous_anthem, has_soothe, has_light_mortar, has_taunt
+3. Party factories updated (Dalai, Erisen, Rook)
+4. Mortar auto-deploy at combat start via has_light_mortar
+5. [combatant_state] scenario file section
+6. _effective_status_bonus_attack/damage helpers + STRIKE integration
+7. Anthem state propagation in apply_outcome_to_state
+8. conditions_removed handling in apply_outcome_to_state
+9. 6 new evaluators: ANTHEM, SOOTHE, MORTAR_AIM, MORTAR_LOAD, MORTAR_LAUNCH, TAUNT
+10. INTERCEPT_ATTACK extended to 15-ft range vs taunted enemy
+11. All new evaluators registered in dispatcher (20 total)
+12. generate_candidates updated for all 6 new action types
+13. 31 new tests
+14. Strike Hard EV 8.55 (9th consecutive verification)
 
 ## Known Regression Anchors
 
-- **EV 8.55** — Strike Hard. Verified 8 times through CP5.1.3c.
+- **EV 8.55** — Strike Hard. Verified 9 times through CP5.2.
 - **55% prone** — Tactical Takedown.
 - **EV 5.95** — Mortar.
 - **Aetregan HP 15**
@@ -45,17 +36,17 @@
 
 ## Known Simplifications (CP6 calibration targets)
 
-- RAISE_SHIELD danger estimation: `Σ enemy_damage × P(targets_actor) × 0.10`
-- STRIDE flanking: no LoS check
-- CREATE_A_DIVERSION: next-turn off-guard carry-over not scored
-- DISARM crit success: approximated as -2 penalty (item drop not modeled)
-- SHIELD_BLOCK: shield breakage not modeled
-- Enemy MAP not tracked per snapshot (overestimates enemy damage)
-- EV-collapse applies non-HP changes from most-probable outcome (heuristic)
+- ANTHEM remaining_strikes: capped at min(actions_remaining, 2)
+- ANTHEM/SOOTHE role multiplier: hardcoded Dalai name check
+- TAUNT score: rough avg_enemy_dmg calculation
+- Mortar target-point selection: targets all enemies (simplified burst)
+- Composition conflict handling: deferred (only one composition at L1)
+- RAISE_SHIELD danger estimation: approximate
+- Enemy MAP not tracked per snapshot
 
 ## Next Checkpoint
 
-CP5.2 — Class features (Dalai Anthem, Erisen Mortar, Rook Taunt)
+CP5.3 — General skill actions (Aid, Recall Knowledge, Seek, Hide, Sneak)
 
 ## Links
 
