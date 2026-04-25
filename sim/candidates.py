@@ -418,13 +418,19 @@ def _add_tactic_candidates(
 # ---------------------------------------------------------------------------
 
 def _enemy_candidates(state: RoundState, actor_name: str) -> list[Action]:
-    """Generate STRIKE candidates for enemy combatants."""
+    """Generate candidates for enemy combatants during adversarial sub-search.
+
+    Enemies use a simplified action set: STRIKE any PC in melee reach,
+    STRIDE toward nearest PC if none in reach, END_TURN.
+    """
     enemy = state.enemies[actor_name]
     actions: list[Action] = []
 
     if enemy.current_hp <= 0 or not enemy.damage_dice:
         return [_end_turn(actor_name)]
 
+    # STRIKE: each living PC within 5-ft melee reach
+    has_target_in_reach = False
     for pc_name, pc in state.pcs.items():
         if pc.current_hp <= 0:
             continue
@@ -433,6 +439,50 @@ def _enemy_candidates(state: RoundState, actor_name: str) -> list[Action]:
                 type=ActionType.STRIKE, actor_name=actor_name,
                 action_cost=1, target_name=pc_name,
             ))
+            has_target_in_reach = True
+
+    # STRIDE toward nearest PC if no one is in melee reach
+    if not has_target_in_reach:
+        grid: GridState = state.grid  # type: ignore[assignment]
+        occupied = _occupied_positions(state) - {enemy.position}
+        # Find nearest living PC and stride toward them
+        nearest_pc_name: str | None = None
+        nearest_dist = 999
+        for pc_name, pc in state.pcs.items():
+            if pc.current_hp <= 0:
+                continue
+            d = distance_ft(enemy.position, pc.position)
+            if d < nearest_dist:
+                nearest_dist = d
+                nearest_pc_name = pc_name
+
+        if nearest_pc_name is not None:
+            target_pos = state.pcs[nearest_pc_name].position
+            # Find best square adjacent to the target PC within enemy speed
+            enemy_speed = 25  # standard enemy speed
+            best_dest: Pos | None = None
+            best_cost = 999
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    dest = (target_pos[0] + dr, target_pos[1] + dc)
+                    if not (0 <= dest[0] < grid.rows and 0 <= dest[1] < grid.cols):
+                        continue
+                    if dest in occupied or dest in grid.walls:
+                        continue
+                    cost = shortest_movement_cost(
+                        enemy.position, dest, occupied | grid.walls, grid,
+                    )
+                    if cost < best_cost and cost <= enemy_speed:
+                        best_cost = cost
+                        best_dest = dest
+
+            if best_dest is not None:
+                actions.append(Action(
+                    type=ActionType.STRIDE, actor_name=actor_name,
+                    action_cost=1, target_position=best_dest,
+                ))
 
     actions.append(_end_turn(actor_name))
     return actions

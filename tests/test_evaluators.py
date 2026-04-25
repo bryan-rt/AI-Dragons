@@ -1266,3 +1266,39 @@ class TestStepHidden:
         for o in result.outcomes:
             removed = o.conditions_removed.get("Rook", ())
             assert "hidden" not in removed
+
+
+# ---------------------------------------------------------------------------
+# Bugfix: Enemy candidate generation
+# ---------------------------------------------------------------------------
+
+class TestEnemyCandidates:
+
+    def test_enemy_generates_strike_when_pc_adjacent(self) -> None:
+        """Enemy must generate STRIKE when a PC is in melee reach."""
+        from sim.candidates import generate_candidates
+        state = _quick_state()  # Rook at (5,6), Bandit1 at (5,7) — adjacent
+        candidates = generate_candidates(state, "Bandit1")
+        strike_actions = [a for a in candidates if a.type == ActionType.STRIKE]
+        assert len(strike_actions) >= 1
+
+    def test_enemy_generates_stride_when_no_pc_in_reach(self) -> None:
+        """Enemy must generate STRIDE when no PC is in melee reach."""
+        from sim.candidates import generate_candidates
+        # Move all PCs far from Bandit1
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"position": (0, 0)},
+            "Rook": {"position": (0, 1)},
+            "Dalai Alpaca": {"position": (0, 2)},
+            "Erisen": {"position": (0, 3)},
+        })
+        candidates = generate_candidates(state, "Bandit1")
+        stride_actions = [a for a in candidates if a.type == ActionType.STRIDE]
+        assert len(stride_actions) >= 1
+
+    def test_enemy_always_includes_end_turn(self) -> None:
+        from sim.candidates import generate_candidates
+        state = _quick_state()
+        candidates = generate_candidates(state, "Bandit1")
+        end_actions = [a for a in candidates if a.type == ActionType.END_TURN]
+        assert len(end_actions) >= 1
