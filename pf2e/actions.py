@@ -71,6 +71,12 @@ class ActionType(Enum):
     MORTAR_LOAD = auto()      # Erisen: Light Mortar load
     MORTAR_LAUNCH = auto()    # Erisen: Light Mortar fire
     TAUNT = auto()            # Rook: Guardian Taunt
+    # CP5.3: skill actions
+    RECALL_KNOWLEDGE = auto()  # Identify enemy W/R
+    HIDE = auto()              # Stealth → Hidden condition
+    SNEAK = auto()             # Move while Hidden (half Speed)
+    SEEK = auto()              # Perception → reveal Hidden enemies
+    AID = auto()               # Prepare to aid an ally (next-round bonus)
 
 
 @dataclass(frozen=True)
@@ -208,6 +214,34 @@ def _find_weapon(
     if actor_snap.character.equipped_weapons:
         return actor_snap.character.equipped_weapons[0]
     return None
+
+
+def _has_recalled(actor_snap: CombatantSnapshot, enemy_name: str) -> bool:
+    """Return True if actor has successfully used Recall Knowledge on this enemy.
+
+    Controls whether weakness/resistance modifiers apply in damage evaluation.
+    Tag format: "recalled_<enemy_name_lowercased_underscores>"
+    """
+    tag = "recalled_" + enemy_name.lower().replace(" ", "_")
+    return tag in actor_snap.conditions
+
+
+def _d20_success_probability(bonus: int, dc: int) -> float:
+    """Probability of meeting DC on a d20 roll + bonus. Clamps to [0.05, 0.95]."""
+    hits = 20 - max(0, dc - bonus - 1)
+    return max(0.05, min(0.95, hits / 20))
+
+
+def _d20_crit_success_probability(bonus: int, dc: int) -> float:
+    """Probability of exceeding DC by 10+ on a d20."""
+    crits = 20 - max(0, dc + 10 - bonus - 1)
+    return max(0.0, min(1.0, crits / 20))
+
+
+def _d20_crit_fail_probability(bonus: int, dc: int) -> float:
+    """Probability of failing DC by 10+ on a d20."""
+    crit_fails = max(0, dc - 10 - bonus)
+    return max(0.0, min(1.0, crit_fails / 20))
 
 
 def _build_mock_spatial(
@@ -474,6 +508,9 @@ def _evaluate_pc_strike(
     # Apply mid-round Anthem bonus if not already on snapshot
     anthem_atk_delta = _effective_status_bonus_attack(actor, state) - actor.status_bonus_attack
     bonus += anthem_atk_delta
+    # Hidden strike: +2 circumstance bonus to attack (AoN: Hidden condition)
+    hidden_bonus = 2 if "hidden" in actor.conditions else 0
+    bonus += hidden_bonus
 
     # Effective AC: off-guard from condition OR prone
     effective_off_guard = target.off_guard or target.prone
@@ -485,6 +522,14 @@ def _evaluate_pc_strike(
     # Apply mid-round Anthem damage bonus
     anthem_dmg_delta = _effective_status_bonus_damage(actor, state) - actor.status_bonus_damage
     hit_dmg += anthem_dmg_delta
+
+    # Apply weakness/resistance if actor has Recalled Knowledge on target
+    if _has_recalled(actor, action.target_name):
+        dmg_type = equipped.weapon.damage_type.name.lower()
+        hit_dmg = max(0.0, hit_dmg
+                      + target.weaknesses.get(dmg_type, 0)
+                      - target.resistances.get(dmg_type, 0))
+
     deadly = equipped.weapon.deadly_die
     deadly_extra = die_average(deadly) if deadly else 0.0
     crit_dmg = hit_dmg * 2 + deadly_extra
@@ -513,6 +558,21 @@ def _evaluate_pc_strike(
         ))
     if not outcomes:
         outcomes.append(ActionOutcome(probability=1.0))
+
+    # Striking clears Hidden (AoN: Hidden condition — any action except Hide/Sneak/Step)
+    if "hidden" in actor.conditions:
+        outcomes = [
+            ActionOutcome(
+                probability=o.probability,
+                hp_changes=o.hp_changes,
+                position_changes=o.position_changes,
+                conditions_applied=o.conditions_applied,
+                conditions_removed={**o.conditions_removed, action.actor_name: ("hidden",)},
+                reactions_consumed=o.reactions_consumed,
+                description=o.description,
+            )
+            for o in outcomes
+        ]
 
     return ActionResult(action=action, outcomes=tuple(outcomes))
 
@@ -1325,15 +1385,40 @@ def evaluate_mortar_launch(
         return ActionResult(action=action, eligible=False,
                            ineligibility_reason="No living enemies")
 
-    score = expected_aoe_damage(actor.character, mortar, enemy_targets)
+    enemy_score = expected_aoe_damage(actor.character, mortar, enemy_targets)
+
+    # Friendly fire: PF2e AoE hits allies within the burst.
+    # Simplified: check if any ally is within 5 ft of any living enemy
+    # (i.e., would be caught in a 10-ft burst centered on/near that enemy).
+    # (AoN: https://2e.aonprd.com/Rules.aspx — Area rules)
+    from pf2e.combat_math import save_bonus as _save_bonus
+    friendly_fire = 0.0
+    for ally_name, ally_snap in state.pcs.items():
+        if ally_snap.current_hp <= 0 or ally_name == action.actor_name:
+            continue
+        # Only penalize if ally is adjacent (5 ft) to an enemy — they'd be
+        # in the 10-ft burst centered on that enemy.
+        for enemy in state.enemies.values():
+            if enemy.current_hp > 0 and _grid_distance_ft(ally_snap.position, enemy.position) <= 5:
+                ally_target = EnemyTarget(
+                    name=ally_name, ac=armor_class(ally_snap),  # type: ignore[arg-type]
+                    saves={SaveType.REFLEX: _save_bonus(ally_snap.character, SaveType.REFLEX)},
+                )
+                friendly_fire += expected_aoe_damage(actor.character, mortar, [ally_target])
+                break  # count each ally once
+
+    score = enemy_score - friendly_fire
+    if score <= 0.0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Friendly fire exceeds enemy damage")
 
     return ActionResult(
         action=action,
         outcomes=(ActionOutcome(
             probability=1.0,
-            hp_changes={t.name: -score / len(enemy_targets) for t in enemy_targets},
+            hp_changes={t.name: -enemy_score / len(enemy_targets) for t in enemy_targets},
             conditions_removed={action.actor_name: ("mortar_aimed", "mortar_loaded")},
-            description=f"Launch Mortar (EV {score:.2f} across {len(enemy_targets)} target(s))",
+            description=f"Launch Mortar (EV {score:.2f}, FF penalty {friendly_fire:.2f})",
         ),),
     )
 
@@ -1400,6 +1485,284 @@ def evaluate_taunt(
 
 
 # ---------------------------------------------------------------------------
+# CP5.3: RECALL_KNOWLEDGE
+# ---------------------------------------------------------------------------
+
+RECALL_KNOWLEDGE_DC = 15  # CP5.3 simplification. CP6: use creature-level DC table.
+
+
+def evaluate_recall_knowledge(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Recall Knowledge about an enemy to reveal weaknesses/resistances.
+
+    Society for humanoids. On success, actor gains recalled tag enabling
+    W/R-adjusted damage in subsequent STRIKE evaluations.
+    (AoN: https://2e.aonprd.com/Skills.aspx — Recall Knowledge)
+    DC 15 flat for CP5.3. CP6: creature-level DC table.
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Invalid or dead target")
+
+    tag = "recalled_" + action.target_name.lower().replace(" ", "_")
+    if tag in actor.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"Already recalled {action.target_name}")
+
+    # Society for humanoids (bandits). CP6: route by creature type.
+    rk_bonus = skill_bonus(actor.character, Skill.SOCIETY)
+    p_success = _d20_success_probability(rk_bonus, RECALL_KNOWLEDGE_DC)
+
+    # Score = EV gain from W/R insight on remaining strikes
+    remaining = min(actor.actions_remaining - 1, 2)
+    if not target.weaknesses and not target.resistances:
+        recall_ev = 0.0
+    else:
+        # Compute naive vs informed damage per strike
+        if actor.character.equipped_weapons:
+            eq = actor.character.equipped_weapons[0]
+            base_dmg = damage_avg(actor, eq)  # type: ignore[arg-type]
+            dmg_type = eq.weapon.damage_type.name.lower()
+            w_bonus = target.weaknesses.get(dmg_type, 0)
+            r_penalty = target.resistances.get(dmg_type, 0)
+            informed_dmg = max(0.0, base_dmg + w_bonus - r_penalty)
+            ev_gain = informed_dmg - base_dmg
+        else:
+            ev_gain = 0.0
+        recall_ev = p_success * ev_gain * remaining
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            conditions_applied={action.actor_name: (tag,)},
+            description=f"Recall Knowledge: {action.target_name} (EV {recall_ev:.2f})",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# CP5.3: HIDE
+# ---------------------------------------------------------------------------
+
+def evaluate_hide(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Attempt to Hide from enemies. Requires cover (proxy: not adjacent to enemy).
+
+    On success: Hidden condition (off-guard to enemies, DC 11 flat check to target).
+    (AoN: https://2e.aonprd.com/Actions.aspx — Hide)
+    (AoN: https://2e.aonprd.com/Conditions.aspx — Hidden)
+    Cover proxy is CP5.3 simplification. Full LoS deferred to CP6.
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+    if "hidden" in actor.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Already hidden")
+
+    # Cover proxy: ineligible if any living enemy is adjacent
+    for enemy in state.enemies.values():
+        if enemy.current_hp > 0 and _grid_distance_ft(actor.position, enemy.position) <= 5:
+            return ActionResult(action=action, eligible=False,
+                               ineligibility_reason="No cover — adjacent to enemy")
+
+    stealth = skill_bonus(actor.character, Skill.STEALTH)
+    living_enemies = [e for e in state.enemies.values() if e.current_hp > 0]
+    if not living_enemies:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No enemies to hide from")
+
+    avg_perc_dc = sum(10 + e.perception_bonus for e in living_enemies) / len(living_enemies)
+    p_success = _d20_success_probability(stealth, int(avg_perc_dc))
+
+    # Score: off-guard attack bonus + flat check defense
+    remaining_strikes = min(actor.actions_remaining - 1, 2)
+    avg_dmg = 5.0
+    if actor.character.equipped_weapons:
+        avg_dmg = damage_avg(actor, actor.character.equipped_weapons[0])  # type: ignore[arg-type]
+
+    off_guard_ev = remaining_strikes * 0.10 * avg_dmg
+    # DC 11 flat check: ~45% chance enemies miss
+    incoming_attacks = sum(e.num_attacks_per_turn for e in living_enemies)
+    avg_incoming = sum(
+        (die_average(f"d{e.damage_dice.split('d')[1]}" if 'd' in e.damage_dice else "d4")
+         * int(e.damage_dice.split('d')[0] if 'd' in e.damage_dice else "1")
+         + e.damage_bonus) if e.damage_dice else 0
+        for e in living_enemies
+    ) / max(1, len(living_enemies))
+    flat_check_ev = incoming_attacks * 0.45 * avg_incoming
+
+    hide_ev = p_success * (off_guard_ev + flat_check_ev)
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            conditions_applied={action.actor_name: ("hidden",)},
+            description=f"Hide (EV {hide_ev:.2f})",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# CP5.3: SNEAK
+# ---------------------------------------------------------------------------
+
+def evaluate_sneak(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Move while maintaining Hidden. Half Speed. Stealth vs Perception.
+
+    Must already be Hidden. On failure: Hidden lost.
+    (AoN: https://2e.aonprd.com/Actions.aspx — Sneak)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+    if "hidden" not in actor.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Must be Hidden to Sneak")
+    if action.target_position is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No target position")
+
+    stealth = skill_bonus(actor.character, Skill.STEALTH)
+    living_enemies = [e for e in state.enemies.values() if e.current_hp > 0]
+    avg_perc_dc = sum(10 + e.perception_bonus for e in living_enemies) / max(1, len(living_enemies))
+    p_success = _d20_success_probability(stealth, int(avg_perc_dc))
+
+    outcomes: list[ActionOutcome] = []
+    if p_success > 0:
+        outcomes.append(ActionOutcome(
+            probability=p_success,
+            position_changes={action.actor_name: action.target_position},
+            description=f"Sneak to {action.target_position} — remain hidden",
+        ))
+    if 1 - p_success > 0:
+        outcomes.append(ActionOutcome(
+            probability=1 - p_success,
+            position_changes={action.actor_name: action.target_position},
+            conditions_removed={action.actor_name: ("hidden",)},
+            description=f"Sneak to {action.target_position} — detected",
+        ))
+    if not outcomes:
+        outcomes.append(ActionOutcome(probability=1.0))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+# ---------------------------------------------------------------------------
+# CP5.3: SEEK
+# ---------------------------------------------------------------------------
+
+def evaluate_seek(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Attempt to locate Hidden enemies. Always eligible. Scores 0 if none hidden.
+
+    (AoN: https://2e.aonprd.com/Actions.aspx — Seek)
+    """
+    from pf2e.combat_math import perception_bonus as _perception_bonus
+
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+
+    hidden_enemies = [e for e in state.enemies.values()
+                      if e.current_hp > 0 and "hidden" in e.conditions]
+    seek_ev = 0.0
+    if hidden_enemies:
+        perc = _perception_bonus(actor.character)
+        p_success = _d20_success_probability(perc, 15)
+        # Value of revealing: remove flat check defense
+        for e in hidden_enemies:
+            avg_dmg = (die_average(f"d{e.damage_dice.split('d')[1]}" if 'd' in e.damage_dice else "d4")
+                       * int(e.damage_dice.split('d')[0] if 'd' in e.damage_dice else "1")
+                       + e.damage_bonus) if e.damage_dice else 0
+            seek_ev += p_success * 0.45 * avg_dmg * e.num_attacks_per_turn
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            description=f"Seek ({len(hidden_enemies)} hidden, EV {seek_ev:.2f})",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# CP5.3: AID
+# ---------------------------------------------------------------------------
+
+AID_DC = 15
+
+
+def evaluate_aid(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Prepare to Aid an ally. 1 action, reaction next turn. 0.5 discount.
+
+    Success: +1 circumstance to ally's check. Crit success: +2.
+    Crit failure: -1 penalty.
+    (AoN: https://2e.aonprd.com/Actions.aspx — Aid)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+    target = state.pcs.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Invalid or dead ally")
+    if action.actor_name == action.target_name:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Cannot Aid yourself")
+
+    # Use best skill bonus for Aid roll
+    best_bonus = max(
+        skill_bonus(actor.character, s) for s in Skill
+    )
+    p_success = _d20_success_probability(best_bonus, AID_DC)
+    p_crit = _d20_crit_success_probability(best_bonus, AID_DC)
+    p_crit_fail = _d20_crit_fail_probability(best_bonus, AID_DC)
+
+    # Rough ally avg damage for bonus EV
+    ally_avg_dmg = 5.0
+    if target.character.equipped_weapons:
+        ally_avg_dmg = damage_avg(target, target.character.equipped_weapons[0])  # type: ignore[arg-type]
+
+    bonus_ev = (p_success * 0.05 + p_crit * 0.10 - p_crit_fail * 0.05) * ally_avg_dmg
+    aid_ev = bonus_ev * 0.5  # next-round discount
+
+    aiding_tag = f"aiding_{action.target_name.lower().replace(' ', '_')}"
+    aided_tag = f"aided_by_{action.actor_name.lower().replace(' ', '_')}"
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            conditions_applied={
+                action.actor_name: (aiding_tag,),
+                action.target_name: (aided_tag,),
+            },
+            description=f"Aid {action.target_name} (EV {aid_ev:.2f}, discounted)",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -1425,6 +1788,12 @@ _ACTION_EVALUATORS: dict[ActionType, Callable[..., ActionResult]] = {
     ActionType.MORTAR_LOAD: evaluate_mortar_load,
     ActionType.MORTAR_LAUNCH: evaluate_mortar_launch,
     ActionType.TAUNT: evaluate_taunt,
+    # CP5.3
+    ActionType.RECALL_KNOWLEDGE: evaluate_recall_knowledge,
+    ActionType.HIDE: evaluate_hide,
+    ActionType.SNEAK: evaluate_sneak,
+    ActionType.SEEK: evaluate_seek,
+    ActionType.AID: evaluate_aid,
 }
 
 

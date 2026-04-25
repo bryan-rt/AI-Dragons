@@ -193,6 +193,50 @@ def _pc_candidates(
                     action_cost=1, target_name=en_name,
                 ))
 
+    # RECALL_KNOWLEDGE: per living enemy not yet recalled, if Society trained
+    from pf2e.combat_math import skill_bonus as _skill_bonus
+    from pf2e.types import Skill as _Skill
+    society_bonus = _skill_bonus(actor.character, _Skill.SOCIETY)
+    if society_bonus > -2 and actor.actions_remaining >= 1:
+        for en_name in state.enemies:
+            tag = "recalled_" + en_name.lower().replace(" ", "_")
+            if tag not in actor.conditions and state.enemies[en_name].current_hp > 0:
+                actions.append(Action(
+                    type=ActionType.RECALL_KNOWLEDGE, actor_name=actor_name,
+                    action_cost=1, target_name=en_name,
+                ))
+
+    # HIDE: if not hidden and not adjacent to any enemy
+    if ("hidden" not in actor.conditions
+            and actor.actions_remaining >= 1):
+        adjacent_enemy = any(
+            distance_ft(actor.position, e.position) <= 5
+            for e in state.enemies.values() if e.current_hp > 0
+        )
+        if not adjacent_enemy:
+            actions.append(Action(
+                type=ActionType.HIDE, actor_name=actor_name, action_cost=1,
+            ))
+
+    # SNEAK: if hidden, half-Speed destinations
+    if "hidden" in actor.conditions and actor.actions_remaining >= 1:
+        _add_sneak_candidates(actor, state, actor_name, actions)
+
+    # SEEK: always if actions remain
+    if actor.actions_remaining >= 1:
+        actions.append(Action(
+            type=ActionType.SEEK, actor_name=actor_name, action_cost=1,
+        ))
+
+    # AID: per living ally (not self)
+    if actor.actions_remaining >= 1:
+        for pc_name, pc in state.pcs.items():
+            if pc_name != actor_name and pc.current_hp > 0:
+                actions.append(Action(
+                    type=ActionType.AID, actor_name=actor_name,
+                    action_cost=1, target_name=pc_name,
+                ))
+
     # Always include END_TURN
     actions.append(_end_turn(actor_name))
 
@@ -315,6 +359,38 @@ def _add_stride_candidates(
             type=ActionType.STRIDE, actor_name=actor_name,
             action_cost=1, target_position=dest,
         ))
+
+
+def _add_sneak_candidates(
+    actor: CombatantSnapshot, state: RoundState,
+    actor_name: str, actions: list[Action],
+) -> None:
+    """Add SNEAK actions: same heuristic as STRIDE but capped at half Speed."""
+    occupied = _occupied_positions(state) - {actor.position}
+    grid: GridState = state.grid  # type: ignore[assignment]
+    half_speed = (actor.current_speed if actor.current_speed is not None
+                  else actor.character.speed) // 2
+    # Aggressive destinations within half speed
+    for en_name, enemy in state.enemies.items():
+        if enemy.current_hp <= 0:
+            continue
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                if dr == 0 and dc == 0:
+                    continue
+                dest = (enemy.position[0] + dr, enemy.position[1] + dc)
+                if (0 <= dest[0] < grid.rows and 0 <= dest[1] < grid.cols
+                        and dest not in occupied and dest not in grid.walls):
+                    cost = shortest_movement_cost(
+                        actor.position, dest, occupied | grid.walls, grid,
+                    )
+                    if cost <= half_speed:
+                        actions.append(Action(
+                            type=ActionType.SNEAK, actor_name=actor_name,
+                            action_cost=1, target_position=dest,
+                        ))
+        if len([a for a in actions if a.type == ActionType.SNEAK]) >= 5:
+            break
 
 
 def _add_tactic_candidates(

@@ -574,8 +574,8 @@ class TestActivateTactic:
 
 class TestDispatcher:
 
-    def test_dispatcher_all_20_types_registered(self) -> None:
-        """All 20 action types (excluding EVER_READY) have evaluators."""
+    def test_dispatcher_all_25_types_registered(self) -> None:
+        """All 25 action types (excluding EVER_READY) have evaluators."""
         from pf2e.actions import _ACTION_EVALUATORS
         expected = {
             ActionType.END_TURN, ActionType.PLANT_BANNER,
@@ -589,6 +589,9 @@ class TestDispatcher:
             ActionType.ANTHEM, ActionType.SOOTHE,
             ActionType.MORTAR_AIM, ActionType.MORTAR_LOAD,
             ActionType.MORTAR_LAUNCH, ActionType.TAUNT,
+            # CP5.3
+            ActionType.RECALL_KNOWLEDGE, ActionType.HIDE,
+            ActionType.SNEAK, ActionType.SEEK, ActionType.AID,
         }
         assert set(_ACTION_EVALUATORS.keys()) == expected
 
@@ -779,8 +782,13 @@ class TestMortarSequence:
         assert not result.eligible
 
     def test_mortar_launch_eligible_when_aimed_and_loaded(self) -> None:
+        # Move PCs away from enemy to avoid friendly fire
         state = _quick_state(pc_overrides={
-            "Erisen": {"conditions": frozenset({"mortar_deployed", "mortar_aimed", "mortar_loaded"})},
+            "Erisen": {"conditions": frozenset({"mortar_deployed", "mortar_aimed", "mortar_loaded"}),
+                       "position": (0, 0)},
+            "Rook": {"position": (0, 1)},
+            "Aetregan": {"position": (0, 2)},
+            "Dalai Alpaca": {"position": (0, 3)},
         })
         action = Action(type=ActionType.MORTAR_LAUNCH, actor_name="Erisen", action_cost=1)
         from pf2e.actions import evaluate_mortar_launch
@@ -799,7 +807,11 @@ class TestMortarSequence:
 
     def test_mortar_launch_clears_aimed_and_loaded(self) -> None:
         state = _quick_state(pc_overrides={
-            "Erisen": {"conditions": frozenset({"mortar_deployed", "mortar_aimed", "mortar_loaded"})},
+            "Erisen": {"conditions": frozenset({"mortar_deployed", "mortar_aimed", "mortar_loaded"}),
+                       "position": (0, 0)},
+            "Rook": {"position": (0, 1)},
+            "Aetregan": {"position": (0, 2)},
+            "Dalai Alpaca": {"position": (0, 3)},
         })
         action = Action(type=ActionType.MORTAR_LAUNCH, actor_name="Erisen", action_cost=1)
         from pf2e.actions import evaluate_mortar_launch
@@ -813,7 +825,13 @@ class TestMortarSequence:
         from sim.search import apply_outcome_to_state
         from pf2e.actions import evaluate_mortar_aim, evaluate_mortar_load, evaluate_mortar_launch
 
-        state = _quick_state()
+        # Position PCs away from enemy to avoid friendly fire on launch
+        state = _quick_state(pc_overrides={
+            "Erisen": {"position": (0, 0)},
+            "Rook": {"position": (0, 1)},
+            "Aetregan": {"position": (0, 2)},
+            "Dalai Alpaca": {"position": (0, 3)},
+        })
         erisen = state.pcs["Erisen"]
         assert "mortar_deployed" in erisen.conditions
 
@@ -982,3 +1000,269 @@ Erisen = mortar_aimed, mortar_loaded
         assert "mortar_aimed" in erisen.conditions
         assert "mortar_loaded" in erisen.conditions
         assert "mortar_deployed" in erisen.conditions  # auto-deployed
+
+
+# ---------------------------------------------------------------------------
+# CP5.3: New tests
+# ---------------------------------------------------------------------------
+
+class TestHasRecalled:
+
+    def test_has_recalled_true_with_tag(self) -> None:
+        from pf2e.actions import _has_recalled
+        from dataclasses import replace as dc_replace
+        state = _quick_state()
+        aetregan = dc_replace(state.pcs["Aetregan"],
+                              conditions=frozenset({"recalled_bandit1"}))
+        assert _has_recalled(aetregan, "Bandit1")
+
+    def test_has_recalled_false_without_tag(self) -> None:
+        from pf2e.actions import _has_recalled
+        state = _quick_state()
+        assert not _has_recalled(state.pcs["Aetregan"], "Bandit1")
+
+    def test_has_recalled_normalizes_name(self) -> None:
+        from pf2e.actions import _has_recalled
+        from dataclasses import replace as dc_replace
+        state = _quick_state()
+        aetregan = dc_replace(state.pcs["Aetregan"],
+                              conditions=frozenset({"recalled_dalai_alpaca"}))
+        assert _has_recalled(aetregan, "Dalai Alpaca")
+
+
+class TestRecallKnowledge:
+
+    def test_recall_eligible_with_society(self) -> None:
+        from pf2e.actions import evaluate_recall_knowledge
+        state = _quick_state()
+        action = Action(type=ActionType.RECALL_KNOWLEDGE, actor_name="Aetregan",
+                       action_cost=1, target_name="Bandit1")
+        result = evaluate_recall_knowledge(action, state)
+        assert result.eligible
+
+    def test_recall_ineligible_when_already_recalled(self) -> None:
+        from pf2e.actions import evaluate_recall_knowledge
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"conditions": frozenset({"recalled_bandit1"})},
+        })
+        action = Action(type=ActionType.RECALL_KNOWLEDGE, actor_name="Aetregan",
+                       action_cost=1, target_name="Bandit1")
+        result = evaluate_recall_knowledge(action, state)
+        assert not result.eligible
+
+    def test_recall_sets_tag(self) -> None:
+        from pf2e.actions import evaluate_recall_knowledge
+        state = _quick_state()
+        action = Action(type=ActionType.RECALL_KNOWLEDGE, actor_name="Aetregan",
+                       action_cost=1, target_name="Bandit1")
+        result = evaluate_recall_knowledge(action, state)
+        assert "recalled_bandit1" in result.outcomes[0].conditions_applied.get("Aetregan", ())
+
+
+class TestStrikeWithWeaknessResistance:
+
+    def _bandit2_state(self):
+        """Build state with Bandit2 that has weakness/resistance."""
+        from sim.scenario import load_scenario
+        return load_scenario("scenarios/checkpoint_2_two_bandits.scenario")
+
+    def test_strike_no_wr_without_recall(self) -> None:
+        """Without Recall Knowledge, STRIKE uses flat damage."""
+        scenario = self._bandit2_state()
+        init_order = ["Aetregan", "Bandit2"]
+        from sim.round_state import RoundState
+        state = RoundState.from_scenario(scenario, init_order)
+        # Aetregan adjacent to Bandit2 for reach
+        state = state.with_pc_update("Aetregan", position=(5, 6))
+        action = Action(type=ActionType.STRIKE, actor_name="Aetregan",
+                       action_cost=1, target_name="Bandit2",
+                       weapon_name="Scorpion Whip")
+        result = evaluate_action(action, state)
+        # Should be eligible and use flat damage (no W/R)
+        assert result.eligible
+
+    def test_parse_bandit2_weakness(self) -> None:
+        scenario = self._bandit2_state()
+        from sim.round_state import RoundState
+        state = RoundState.from_scenario(scenario, ["Bandit2"])
+        b2 = state.enemies["Bandit2"]
+        assert b2.weaknesses.get("bludgeoning") == 3
+        assert b2.resistances.get("slashing") == 3
+        assert b2.resistances.get("piercing") == 3
+
+    def test_no_wr_for_plain_enemy(self) -> None:
+        scenario = self._bandit2_state()
+        from sim.round_state import RoundState
+        state = RoundState.from_scenario(scenario, ["Bandit1"])
+        b1 = state.enemies["Bandit1"]
+        assert b1.weaknesses == {}
+        assert b1.resistances == {}
+
+
+class TestHide:
+
+    def test_hide_eligible_when_not_adjacent(self) -> None:
+        from pf2e.actions import evaluate_hide
+        # Move actor far from enemies
+        state = _quick_state(pc_overrides={"Aetregan": {"position": (0, 0)}})
+        action = Action(type=ActionType.HIDE, actor_name="Aetregan", action_cost=1)
+        result = evaluate_hide(action, state)
+        assert result.eligible
+
+    def test_hide_ineligible_when_adjacent(self) -> None:
+        from pf2e.actions import evaluate_hide
+        state = _quick_state()  # Aetregan at (5,5), Bandit1 at (5,7) — not adjacent
+        # Move Aetregan adjacent to Bandit1
+        state = state.with_pc_update("Aetregan", position=(5, 8))
+        action = Action(type=ActionType.HIDE, actor_name="Aetregan", action_cost=1)
+        result = evaluate_hide(action, state)
+        assert not result.eligible
+
+    def test_hide_ineligible_when_already_hidden(self) -> None:
+        from pf2e.actions import evaluate_hide
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"position": (0, 0), "conditions": frozenset({"hidden"})},
+        })
+        action = Action(type=ActionType.HIDE, actor_name="Aetregan", action_cost=1)
+        result = evaluate_hide(action, state)
+        assert not result.eligible
+
+    def test_hide_sets_hidden_condition(self) -> None:
+        from pf2e.actions import evaluate_hide
+        state = _quick_state(pc_overrides={"Aetregan": {"position": (0, 0)}})
+        action = Action(type=ActionType.HIDE, actor_name="Aetregan", action_cost=1)
+        result = evaluate_hide(action, state)
+        assert "hidden" in result.outcomes[0].conditions_applied.get("Aetregan", ())
+
+
+class TestSneak:
+
+    def test_sneak_eligible_when_hidden(self) -> None:
+        from pf2e.actions import evaluate_sneak
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"conditions": frozenset({"hidden"}), "position": (0, 0)},
+        })
+        action = Action(type=ActionType.SNEAK, actor_name="Aetregan",
+                       action_cost=1, target_position=(0, 1))
+        result = evaluate_sneak(action, state)
+        assert result.eligible
+
+    def test_sneak_ineligible_when_not_hidden(self) -> None:
+        from pf2e.actions import evaluate_sneak
+        state = _quick_state()
+        action = Action(type=ActionType.SNEAK, actor_name="Aetregan",
+                       action_cost=1, target_position=(4, 4))
+        result = evaluate_sneak(action, state)
+        assert not result.eligible
+
+    def test_sneak_two_branches(self) -> None:
+        from pf2e.actions import evaluate_sneak
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"conditions": frozenset({"hidden"}), "position": (0, 0)},
+        })
+        action = Action(type=ActionType.SNEAK, actor_name="Aetregan",
+                       action_cost=1, target_position=(0, 1))
+        result = evaluate_sneak(action, state)
+        assert len(result.outcomes) == 2  # success + failure
+
+
+class TestSeek:
+
+    def test_seek_always_eligible(self) -> None:
+        from pf2e.actions import evaluate_seek
+        state = _quick_state()
+        action = Action(type=ActionType.SEEK, actor_name="Aetregan", action_cost=1)
+        result = evaluate_seek(action, state)
+        assert result.eligible
+
+    def test_seek_score_zero_no_hidden(self) -> None:
+        from pf2e.actions import evaluate_seek
+        state = _quick_state()
+        action = Action(type=ActionType.SEEK, actor_name="Aetregan", action_cost=1)
+        result = evaluate_seek(action, state)
+        # No hidden enemies, description should indicate 0 hidden
+        assert "0 hidden" in result.outcomes[0].description
+
+
+class TestAid:
+
+    def test_aid_eligible_for_living_ally(self) -> None:
+        from pf2e.actions import evaluate_aid
+        state = _quick_state()
+        action = Action(type=ActionType.AID, actor_name="Aetregan",
+                       action_cost=1, target_name="Rook")
+        result = evaluate_aid(action, state)
+        assert result.eligible
+
+    def test_aid_ineligible_for_self(self) -> None:
+        from pf2e.actions import evaluate_aid
+        state = _quick_state()
+        action = Action(type=ActionType.AID, actor_name="Aetregan",
+                       action_cost=1, target_name="Aetregan")
+        result = evaluate_aid(action, state)
+        assert not result.eligible
+
+    def test_aid_sets_conditions(self) -> None:
+        from pf2e.actions import evaluate_aid
+        state = _quick_state()
+        action = Action(type=ActionType.AID, actor_name="Aetregan",
+                       action_cost=1, target_name="Rook")
+        result = evaluate_aid(action, state)
+        conds = result.outcomes[0].conditions_applied
+        assert "aiding_rook" in conds.get("Aetregan", ())
+        assert "aided_by_aetregan" in conds.get("Rook", ())
+
+
+class TestStrikeHidden:
+
+    def test_strike_hidden_bonus(self) -> None:
+        """Hidden actor gets +2 to attack."""
+        state = _quick_state(pc_overrides={
+            "Rook": {"conditions": frozenset({"hidden"})},
+        })
+        action = Action(type=ActionType.STRIKE, actor_name="Rook",
+                       action_cost=1, target_name="Bandit1",
+                       weapon_name="Longsword")
+        result_hidden = evaluate_action(action, state)
+
+        state_normal = _quick_state()
+        result_normal = evaluate_action(
+            Action(type=ActionType.STRIKE, actor_name="Rook",
+                  action_cost=1, target_name="Bandit1",
+                  weapon_name="Longsword"),
+            state_normal,
+        )
+        # Hidden should have higher hit rate (lower miss %)
+        miss_hidden = sum(o.probability for o in result_hidden.outcomes if not o.hp_changes)
+        miss_normal = sum(o.probability for o in result_normal.outcomes if not o.hp_changes)
+        assert miss_hidden < miss_normal
+
+    def test_strike_clears_hidden(self) -> None:
+        """Strike from hiding clears the Hidden condition."""
+        state = _quick_state(pc_overrides={
+            "Rook": {"conditions": frozenset({"hidden"})},
+        })
+        action = Action(type=ActionType.STRIKE, actor_name="Rook",
+                       action_cost=1, target_name="Bandit1",
+                       weapon_name="Longsword")
+        result = evaluate_action(action, state)
+        # All outcomes should have conditions_removed with "hidden"
+        for o in result.outcomes:
+            if o.conditions_removed:
+                assert "hidden" in o.conditions_removed.get("Rook", ())
+
+
+class TestStepHidden:
+
+    def test_step_does_not_clear_hidden(self) -> None:
+        """STEP is allowed while Hidden without breaking it."""
+        state = _quick_state(pc_overrides={
+            "Rook": {"conditions": frozenset({"hidden"})},
+        })
+        action = Action(type=ActionType.STEP, actor_name="Rook",
+                       action_cost=1, target_position=(4, 6))
+        result = evaluate_action(action, state)
+        # Should NOT have conditions_removed for "hidden"
+        for o in result.outcomes:
+            removed = o.conditions_removed.get("Rook", ())
+            assert "hidden" not in removed

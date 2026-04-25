@@ -189,6 +189,11 @@ class EnemyState:
     # Action economy
     actions_remaining: int = 3
 
+    # Damage type modifiers (CP5.3). Keys are lowercase damage type names.
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2309)
+    weaknesses: dict[str, int] = field(default_factory=dict)
+    resistances: dict[str, int] = field(default_factory=dict)
+
     @property
     def perception_dc(self) -> int:
         """DC for Deception/Stealth checks against this enemy."""

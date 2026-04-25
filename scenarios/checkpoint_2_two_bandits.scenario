@@ -1,0 +1,33 @@
+# scenarios/checkpoint_2_two_bandits.scenario
+# Two bandits flanking Aetregan. Bandit2 has weakness/resistance.
+# Tests: Recall Knowledge -> mortar targeting, tactical adaptation.
+
+[meta]
+name = Two Bandits Flanking
+level = 1
+source = CP5.3 test scenario
+description = Two bandits approach from opposite sides. Bandit2 is armored with weakness to bludgeoning and resistance to slashing/piercing.
+
+[grid]
+. . . . . . . . . . . .
+. . . m . . . . . . . .
+. . . . . . . . . . . .
+. . . . c . . . . . . .
+. . . . g . . . . . . .
+. . . . . . . M . . . .
+. . . . . . . . . . . .
+. . b . . . . . . . i .
+. . . . . . . . . . . .
+
+[banner]
+planted = false
+
+[anthem]
+active = true
+
+[enemies]
+m1 name=Bandit1 ac=15 ref=5 fort=3 will=2 atk=7 dmg=1d8 dmg_bonus=3 attacks=2 max_hp=20 perception=4
+M1 name=Bandit2 ac=16 ref=3 fort=5 will=2 atk=6 dmg=1d8 dmg_bonus=2 attacks=2 max_hp=25 perception=4 weakness_bludgeoning=3 resistance_slashing=3 resistance_piercing=3
+
+[initiative]
+seed = 42

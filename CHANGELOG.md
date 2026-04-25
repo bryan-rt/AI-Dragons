@@ -1,5 +1,27 @@
 # Changelog
 
+## [CP5.3] — 2026-04-25
+### Added
+- RECALL_KNOWLEDGE evaluator — conditional W/R insight, Society for humanoids
+- HIDE evaluator — Stealth vs Perception, Hidden condition, cover proxy
+- SNEAK evaluator — half-Speed movement while Hidden, two-branch outcome
+- SEEK evaluator — locate Hidden enemies, scores 0.0 when none present
+- AID evaluator — next-round discounted bonus, crit success modeled
+- weakness/resistance fields on EnemyState and EnemySnapshot
+- Scenario parser: weakness_*/resistance_* keys in [enemies] section
+- scenarios/checkpoint_2_two_bandits.scenario — 2 enemies, W/R stat blocks
+- _has_recalled() helper — controls conditional W/R in STRIKE/MORTAR
+- Probability helpers: _d20_success/crit_success/crit_fail_probability
+
+### Fixed
+- MORTAR_LAUNCH subtracts friendly fire from score delta (PCs adjacent to enemies)
+- STRIKE applies Hidden +2 attack bonus and clears Hidden after attacking
+- Confirmed STEP does not clear Hidden (per AoN)
+
+### Regressions
+- Strike Hard EV 8.55 (10th consecutive verification) — checkpoint_1 scenario
+- New regression target: checkpoint_2_two_bandits scenario
+
 ## [CP5.2] — 2026-04-25
 ### Added
 - ANTHEM evaluator (Courageous Anthem, Option B ripple EV across ally strikes)

@@ -108,6 +108,8 @@ class EnemySnapshot:
     actions_remaining: int
     conditions: frozenset[str] = frozenset()
     # General-purpose condition/immunity tags. Same as CombatantSnapshot.
+    weaknesses: dict[str, int] = field(default_factory=dict)
+    resistances: dict[str, int] = field(default_factory=dict)
 
     @classmethod
     def from_enemy_state(cls, state: EnemyState) -> EnemySnapshot:
@@ -128,6 +130,8 @@ class EnemySnapshot:
             prone=state.prone,
             conditions=frozenset(),
             actions_remaining=state.actions_remaining,
+            weaknesses=dict(state.weaknesses),
+            resistances=dict(state.resistances),
         )
 
 

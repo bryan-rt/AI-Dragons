@@ -1,52 +1,50 @@
 # Current State
 
-**Last updated:** CP5.2 complete.
+**Last updated:** CP5.3 complete.
 
 ## Latest Test Count
 
-**393 passing** (362 prior + 31 new).
+**417 passing** (393 prior + 24 new).
 
 ## Active Work
 
-**CP5.2 — Class Features** (Pass 3 complete).
+**CP5.3 — General Skill Actions** (Pass 3 complete).
 
 ### Completed (this checkpoint)
-1. 6 new ActionType entries: ANTHEM, SOOTHE, MORTAR_AIM, MORTAR_LOAD, MORTAR_LAUNCH, TAUNT
-2. 4 new Character flags: has_courageous_anthem, has_soothe, has_light_mortar, has_taunt
-3. Party factories updated (Dalai, Erisen, Rook)
-4. Mortar auto-deploy at combat start via has_light_mortar
-5. [combatant_state] scenario file section
-6. _effective_status_bonus_attack/damage helpers + STRIKE integration
-7. Anthem state propagation in apply_outcome_to_state
-8. conditions_removed handling in apply_outcome_to_state
-9. 6 new evaluators: ANTHEM, SOOTHE, MORTAR_AIM, MORTAR_LOAD, MORTAR_LAUNCH, TAUNT
-10. INTERCEPT_ATTACK extended to 15-ft range vs taunted enemy
-11. All new evaluators registered in dispatcher (20 total)
-12. generate_candidates updated for all 6 new action types
-13. 31 new tests
-14. Strike Hard EV 8.55 (9th consecutive verification)
+1. 5 new ActionType entries: RECALL_KNOWLEDGE, HIDE, SNEAK, SEEK, AID
+2. weakness/resistance fields on EnemyState and EnemySnapshot
+3. Scenario parser extension: weakness_*/resistance_* keys
+4. New scenario: checkpoint_2_two_bandits.scenario (2 enemies, W/R)
+5. Mortar friendly fire fix (subtracts ally damage from score)
+6. _has_recalled() helper for conditional W/R application
+7. STRIKE: conditional W/R, Hidden +2 attack, clears Hidden after
+8. STEP confirmed: does not clear Hidden
+9. 5 new evaluators: RECALL_KNOWLEDGE, HIDE, SNEAK, SEEK, AID
+10. All registered in dispatcher (25 total)
+11. generate_candidates updated for all 5 new types
+12. Probability helpers added
+13. Strike Hard EV 8.55 (10th consecutive verification)
 
 ## Known Regression Anchors
 
-- **EV 8.55** — Strike Hard. Verified 9 times through CP5.2.
+- **EV 8.55** — Strike Hard. Verified 10 times through CP5.3.
 - **55% prone** — Tactical Takedown.
 - **EV 5.95** — Mortar.
-- **Aetregan HP 15**
-- **Lore +7**
+- **checkpoint_2** — New 2-bandit scenario (EV targets TBD from run)
 
 ## Known Simplifications (CP6 calibration targets)
 
-- ANTHEM remaining_strikes: capped at min(actions_remaining, 2)
-- ANTHEM/SOOTHE role multiplier: hardcoded Dalai name check
-- TAUNT score: rough avg_enemy_dmg calculation
-- Mortar target-point selection: targets all enemies (simplified burst)
-- Composition conflict handling: deferred (only one composition at L1)
-- RAISE_SHIELD danger estimation: approximate
-- Enemy MAP not tracked per snapshot
+- HIDE cover proxy: "not adjacent to any enemy" — no LoS check
+- RECALL_KNOWLEDGE DC: flat 15 — no level-based table
+- RECALL_KNOWLEDGE: Society only for humanoids — no creature-type routing
+- AID: uses actor's highest skill — no action-type matching
+- AID: 0.5 next-round discount — calibrate with multi-round sim
+- SNEAK destination filter: no LoS check for cover maintenance
+- Mortar friendly fire: simplified (adjacent to enemy = in burst)
 
 ## Next Checkpoint
 
-CP5.3 — General skill actions (Aid, Recall Knowledge, Seek, Hide, Sneak)
+CP6 — Multi-round simulation, scoring calibration, multi-buff refactor
 
 ## Links
 

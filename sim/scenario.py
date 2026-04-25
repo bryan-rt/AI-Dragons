@@ -150,6 +150,17 @@ def _build_enemy(
             f"Enemy '{token}' missing required fields: {missing}"
         )
     try:
+        # Parse weakness_<type>=<int> and resistance_<type>=<int> keys
+        weaknesses: dict[str, int] = {}
+        resistances: dict[str, int] = {}
+        for key, val in spec.items():
+            if key.startswith("weakness_"):
+                dmg_type = key[len("weakness_"):]
+                weaknesses[dmg_type] = int(val)
+            elif key.startswith("resistance_"):
+                dmg_type = key[len("resistance_"):]
+                resistances[dmg_type] = int(val)
+
         return EnemyState(
             name=spec["name"],
             ac=int(spec["ac"]),
@@ -165,6 +176,10 @@ def _build_enemy(
             damage_dice=spec.get("dmg", ""),
             damage_bonus=int(spec.get("dmg_bonus", "0")),
             num_attacks_per_turn=int(spec.get("attacks", "2")),
+            max_hp=int(spec.get("max_hp", "20")),
+            perception_bonus=int(spec.get("perception", "4")),
+            weaknesses=weaknesses,
+            resistances=resistances,
         )
     except ValueError as e:
         raise ScenarioParseError(
