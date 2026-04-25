@@ -152,25 +152,39 @@ def apply_outcome_to_state(
             result = result.with_pc_update(name, position=pos)
         elif name in result.enemies:
             result = result.with_enemy_update(name, position=pos)
+    _HARDCODED_PC = {"off_guard", "prone", "shield_raised"}
+    _HARDCODED_ENEMY = {"off_guard", "prone"}
     for name, conds in outcome.conditions_applied.items():
         if name in result.pcs:
             updates: dict[str, object] = {}
+            extra_conditions: set[str] = set()
             for c in conds:
                 if c == "off_guard":
                     updates["off_guard"] = True
                 elif c == "prone":
                     updates["prone"] = True
+                elif c == "shield_raised":
+                    updates["shield_raised"] = True
                 elif c.startswith("frightened_"):
                     updates["frightened"] = int(c.split("_")[1])
+                else:
+                    extra_conditions.add(c)
+            if extra_conditions:
+                updates["conditions"] = result.pcs[name].conditions | extra_conditions
             if updates:
                 result = result.with_pc_update(name, **updates)
         elif name in result.enemies:
             updates = {}
+            extra_conditions = set()
             for c in conds:
                 if c == "off_guard":
                     updates["off_guard"] = True
                 elif c == "prone":
                     updates["prone"] = True
+                else:
+                    extra_conditions.add(c)
+            if extra_conditions:
+                updates["conditions"] = result.enemies[name].conditions | extra_conditions
             if updates:
                 result = result.with_enemy_update(name, **updates)
     for name, count in outcome.reactions_consumed.items():

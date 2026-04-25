@@ -41,6 +41,12 @@ def roll_initiative(
         2. Among same-side ties, alphabetical by name (deterministic).
 
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2423)
+
+    Note: reactions_available defaults to 1 for all combatants. For Guardians,
+    the Ever Ready class feature guarantees this reaction is available from
+    initiative roll (not just from their first turn). The default satisfies
+    this requirement — no special handling needed.
+    (AoN: https://2e.aonprd.com/Classes.aspx?ID=67)
     """
     explicit = explicit or {}
     rng = random.Random(seed)

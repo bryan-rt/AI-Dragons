@@ -45,6 +45,12 @@ class CombatantSnapshot:
     actions_remaining: int
     status_bonus_attack: int
     status_bonus_damage: int
+    map_count: int = 0
+    # Number of attack-trait actions this turn (Strike, Trip, Disarm).
+    # Resets to 0 at start of actor's turn. Reactive Strikes use map_count=0.
+    conditions: frozenset[str] = frozenset()
+    # General-purpose condition/immunity tags ("demoralize_immune", etc.).
+    # Does NOT replace existing boolean fields (off_guard, prone, etc.).
 
     @classmethod
     def from_combatant_state(cls, state: CombatantState) -> CombatantSnapshot:
@@ -69,6 +75,8 @@ class CombatantSnapshot:
             actions_remaining=state.actions_remaining,
             status_bonus_attack=state.status_bonus_attack,
             status_bonus_damage=state.status_bonus_damage,
+            map_count=0,
+            conditions=frozenset(),
         )
 
 
@@ -93,6 +101,8 @@ class EnemySnapshot:
     off_guard: bool
     prone: bool
     actions_remaining: int
+    conditions: frozenset[str] = frozenset()
+    # General-purpose condition/immunity tags. Same as CombatantSnapshot.
 
     @classmethod
     def from_enemy_state(cls, state: EnemyState) -> EnemySnapshot:
@@ -111,6 +121,7 @@ class EnemySnapshot:
             perception_bonus=state.perception_bonus,
             off_guard=state.off_guard,
             prone=state.prone,
+            conditions=frozenset(),
             actions_remaining=state.actions_remaining,
         )
 
