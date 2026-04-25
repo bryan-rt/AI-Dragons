@@ -15,12 +15,21 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING
 
 from pf2e.actions import Action, ActionOutcome, ActionResult, ActionType
 from pf2e.combat_math import max_hp
 from sim.round_state import CombatantSnapshot, EnemySnapshot, RoundState
 
+if TYPE_CHECKING:
+    from sim.scenario import Scenario
+
 logger = logging.getLogger(__name__)
+
+# ActionTypes with the attack trait (increment MAP)
+_ATTACK_TRAIT_TYPES = frozenset({
+    ActionType.STRIKE, ActionType.TRIP, ActionType.DISARM,
+})
 
 # ---------------------------------------------------------------------------
 # Role multipliers (D18 deferred effects catalog; hardcoded per Non-Decisions)
@@ -293,6 +302,8 @@ def apply_action_result(
 
     # No branching: EV-collapse all outcomes
     ev_state = state
+
+    # EV-fold HP changes (probability-weighted)
     for outcome in result.outcomes:
         if outcome.probability < config.outcome_prune_threshold:
             continue
@@ -308,6 +319,26 @@ def apply_action_result(
                 ev_state = ev_state.with_enemy_update(
                     name, current_hp=int(new_hp),
                 )
+
+    # Apply non-HP state changes (conditions, positions, reactions) from the
+    # most probable outcome. For deterministic outcomes (prob=1.0), this
+    # applies all changes. For multi-outcome results, the most likely
+    # outcome's conditions are applied (heuristic for CP5.1.3c).
+    best_outcome = max(
+        (o for o in result.outcomes
+         if o.probability >= config.outcome_prune_threshold),
+        key=lambda o: o.probability,
+        default=None,
+    )
+    if best_outcome is not None:
+        non_hp_outcome = ActionOutcome(
+            probability=1.0,
+            conditions_applied=best_outcome.conditions_applied,
+            position_changes=best_outcome.position_changes,
+            reactions_consumed=best_outcome.reactions_consumed,
+        )
+        ev_state = apply_outcome_to_state(non_hp_outcome, ev_state)
+
     return [(ev_state, 1.0)]
 
 
@@ -370,6 +401,10 @@ def beam_search_turn(
                     result, entry.state, initial, config,
                 )
                 for child_state, weight in child_states:
+                    # Track MAP and action economy on the actor
+                    child_state = _update_action_economy(
+                        child_state, actor_name, action,
+                    )
                     new_actions = entry.actions + [action]
                     new_weight = entry.weight * weight
                     sc = score_state(child_state, initial)
@@ -488,3 +523,143 @@ def simulate_round(
     )
 
     return plans, current
+
+
+# ---------------------------------------------------------------------------
+# Action economy tracking (MAP + actions_remaining)
+# ---------------------------------------------------------------------------
+
+def _update_action_economy(
+    state: RoundState, actor_name: str, action: Action,
+) -> RoundState:
+    """Update map_count and actions_remaining on the actor after an action."""
+    if action.type == ActionType.END_TURN:
+        return state
+
+    if actor_name in state.pcs:
+        pc = state.pcs[actor_name]
+        updates: dict[str, object] = {
+            "actions_remaining": max(0, pc.actions_remaining - action.action_cost),
+        }
+        if action.type in _ATTACK_TRAIT_TYPES:
+            updates["map_count"] = pc.map_count + 1
+        return state.with_pc_update(actor_name, **updates)
+    elif actor_name in state.enemies:
+        enemy = state.enemies[actor_name]
+        return state.with_enemy_update(
+            actor_name,
+            actions_remaining=max(0, enemy.actions_remaining - action.action_cost),
+        )
+    return state
+
+
+# ---------------------------------------------------------------------------
+# RoundRecommendation and formatting (Step 9)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RoundRecommendation:
+    """Human-readable recommendation for one combatant's turn."""
+    actor_name: str
+    actions: list[str]
+    expected_score: float
+    top_alternatives: list[tuple[list[str], float]]
+    reasoning: str
+
+
+def format_recommendation(rec: RoundRecommendation) -> str:
+    """Format a RoundRecommendation as human-readable text."""
+    lines = [f"=== Recommendation for {rec.actor_name} ==="]
+    lines.append(f"Best plan (EV {rec.expected_score:.2f}):")
+    for i, action in enumerate(rec.actions, 1):
+        lines.append(f"  {i}. {action}")
+    if rec.top_alternatives:
+        lines.append("\nAlternatives:")
+        for alt_actions, alt_score in rec.top_alternatives:
+            lines.append(f"  {' / '.join(alt_actions)}  (EV {alt_score:.2f})")
+    lines.append(f"\nReasoning: {rec.reasoning}")
+    return "\n".join(lines)
+
+
+def _action_label(action: Action) -> str:
+    """Human-readable label for an Action."""
+    if action.type == ActionType.END_TURN:
+        return "End Turn"
+    if action.type == ActionType.STRIKE:
+        return f"Strike {action.target_name} ({action.weapon_name})"
+    if action.type in (ActionType.TRIP, ActionType.DISARM):
+        return f"{action.type.name.title()} {action.target_name}"
+    if action.type in (ActionType.DEMORALIZE, ActionType.FEINT):
+        return f"{action.type.name.title()} {action.target_name}"
+    if action.type == ActionType.CREATE_A_DIVERSION:
+        return f"Create a Diversion vs {action.target_name}"
+    if action.type in (ActionType.STRIDE, ActionType.STEP):
+        return f"{action.type.name.title()} to {action.target_position}"
+    if action.type == ActionType.RAISE_SHIELD:
+        return "Raise Shield"
+    if action.type == ActionType.ACTIVATE_TACTIC:
+        return f"Activate {action.tactic_name}"
+    return action.type.name
+
+
+def _turn_plan_to_recommendation(plan: TurnPlan) -> RoundRecommendation:
+    """Convert a TurnPlan into a human-readable RoundRecommendation."""
+    action_labels = [_action_label(a) for a in plan.actions]
+    breakdown = plan.score_breakdown
+    reasoning = (
+        f"EV breakdown: damage_dealt={breakdown.damage_dealt:.1f}, "
+        f"damage_taken={breakdown.damage_taken:.1f}, "
+        f"kills={breakdown.kill_score:.0f}, drops={breakdown.drop_score:.0f}"
+    )
+    return RoundRecommendation(
+        actor_name=plan.actor_name,
+        actions=action_labels,
+        expected_score=plan.expected_score,
+        top_alternatives=[],
+        reasoning=reasoning,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Convenience: run full simulation from Scenario
+# ---------------------------------------------------------------------------
+
+def run_simulation(
+    scenario: Scenario,
+    seed: int = 42,
+    config: SearchConfig | None = None,
+) -> list[RoundRecommendation]:
+    """Load scenario, roll initiative, run beam search, return recommendations.
+
+    This is the main entry point for the CLI and integration tests.
+    """
+    from pf2e.actions import evaluate_action as pf2e_evaluate_action
+    from sim.candidates import generate_candidates
+    from sim.initiative import roll_initiative
+
+    if config is None:
+        config = SearchConfig()
+
+    # Build initial state
+    init_state = RoundState.from_scenario(
+        scenario,
+        roll_initiative(
+            list(RoundState.from_scenario(scenario, []).pcs.values()),
+            list(RoundState.from_scenario(scenario, []).enemies.values()),
+            seed=seed,
+            explicit=scenario.initiative_explicit or None,
+        ),
+    )
+
+    # Create callables for the beam search
+    def candidate_actions(state: RoundState, actor_name: str) -> list[Action]:
+        return generate_candidates(state, actor_name)
+
+    def evaluate_action_fn(action: Action, state: RoundState) -> ActionResult:
+        return pf2e_evaluate_action(action, state)
+
+    plans, final = simulate_round(
+        init_state, config, candidate_actions, evaluate_action_fn,
+    )
+
+    return [_turn_plan_to_recommendation(p) for p in plans]

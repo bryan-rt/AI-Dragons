@@ -61,12 +61,14 @@ Tactic system.
 - Evaluators: `_evaluate_reaction_strike`, `_evaluate_reaction_stride`, `_evaluate_stride_half`, `_evaluate_free_step`, `_evaluate_passive_buff`, `_evaluate_reaction_raise_shield` (stub)
 - Standalone: `intercept_attack_ev`
 
-### pf2e/actions.py (added CP5.1 3a)
+### pf2e/actions.py (added CP5.1 3a, evaluators CP5.1.3c)
 - `ActionType` enum (15 types)
-- `Action` frozen dataclass
-- `ActionOutcome` frozen dataclass
-- `ActionResult` frozen dataclass with `expected_damage_dealt` property, `verify_probability_sum()` method
-- Pass 3c will add `_ACTION_EVALUATORS` dispatch table and `evaluate_action()` function
+- `Action`, `ActionOutcome`, `ActionResult` frozen dataclasses
+- 14 evaluators: `evaluate_end_turn`, `evaluate_plant_banner`, `evaluate_raise_shield`, `evaluate_step`, `evaluate_stride`, `evaluate_strike`, `evaluate_trip`, `evaluate_disarm`, `evaluate_demoralize`, `evaluate_create_a_diversion`, `evaluate_feint`, `evaluate_shield_block`, `evaluate_intercept_attack`, `evaluate_activate_tactic`
+- `evaluate_action()` dispatcher (routes by ActionType)
+- `_ACTION_EVALUATORS` dispatch table (EVER_READY excluded — passive feature)
+- Private geometry helpers: `_grid_distance_ft`, `_is_within_weapon_reach`
+- Uses TYPE_CHECKING guard for `sim/round_state` imports (duck typing at runtime)
 
 ### pf2e/damage_pipeline.py (added CP5.1.3b)
 Strict PF2e damage resolution. `resolve_strike_outcome()` as the main entry. Resolution order: Intercept Attack → Shield Block → Resistance → Temp HP → Real HP.
@@ -94,11 +96,20 @@ Scenario file loading, parsing, `Scenario` dataclass.
 - `EnemySnapshot` (14 fields, frozen)
 - `RoundState` with `from_scenario`, `with_pc_update`, `with_enemy_update`. Shallow-clone branching via `dataclasses.replace()` with shared `Character`.
 
-### sim/search.py (added CP5.1.3b)
+### sim/search.py (added CP5.1.3b, extended CP5.1.3c)
 - `SearchConfig`, `TurnPlan`, `ScoreBreakdown`
 - `beam_search_turn` K=50/20/10 depth 3
 - `adversarial_enemy_turn` K=20/10/5
 - `simulate_round`, `score_state`
+- `RoundRecommendation`, `format_recommendation()` (CP5.1.3c)
+- `run_simulation(scenario, seed)` — convenience entry point (CP5.1.3c)
+- Action economy tracking: `_update_action_economy()` for MAP + actions_remaining
+
+### sim/candidates.py (added CP5.1.3c)
+`generate_candidates(state, actor_name)` — generates legal parameterized Actions for the beam search. PC candidates: STRIKE, TRIP, DISARM, STEP, STRIDE, RAISE_SHIELD, DEMORALIZE, CREATE_A_DIVERSION, FEINT, ACTIVATE_TACTIC, END_TURN. Enemy candidates: STRIKE, END_TURN.
+
+### sim/cli.py + sim/__main__.py (added CP5.1.3c)
+CLI entry point. `python -m sim --scenario X --seed 42 --debug-search`.
 
 ### sim/initiative.py (added CP5.1.3b)
 `roll_initiative()` — seeded isolated RNG, partial override, enemy-beats-PC tiebreaker.

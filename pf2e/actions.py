@@ -1,16 +1,38 @@
-"""Action types and data structures for the turn evaluator.
+"""Action types, data structures, evaluators, and dispatcher.
 
 Actions are the atomic choices a character makes during combat. Each
-ActionType has an associated evaluator (implemented in Pass 3c) that
-computes the outcome distribution for a given (action, state) pair.
+ActionType has an associated evaluator that computes the outcome
+distribution for a given (action, state) pair.
 
-Pass 3a delivers only the types — evaluators come in 3c.
+Pass 3a: types only. Pass 3c: 14 evaluators + dispatcher.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from typing import TYPE_CHECKING
+
+from pf2e.combat_math import (
+    armor_class,
+    attack_bonus,
+    damage_avg,
+    die_average,
+    enumerate_d20_outcomes,
+    expected_enemy_turn_damage,
+    guardians_armor_resistance,
+    lore_bonus,
+    map_penalty,
+    max_hp,
+    melee_reach_ft,
+    skill_bonus,
+)
+from pf2e.types import SaveType, Skill
+
+if TYPE_CHECKING:
+    from pf2e.tactics import SpatialQueries
+    from sim.round_state import CombatantSnapshot, EnemySnapshot, RoundState
 
 
 class ActionType(Enum):
@@ -120,3 +142,957 @@ class ActionResult:
             return len(self.outcomes) == 0
         total = sum(o.probability for o in self.outcomes)
         return abs(total - 1.0) < tolerance
+
+
+# ---------------------------------------------------------------------------
+# Private geometry helpers (pure math, no sim/ imports)
+# ---------------------------------------------------------------------------
+
+def _grid_distance_ft(a: tuple[int, int], b: tuple[int, int]) -> int:
+    """PF2e grid distance with 5/10 diagonal alternation.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2357)
+    """
+    dr = abs(a[0] - b[0])
+    dc = abs(a[1] - b[1])
+    diag = min(dr, dc)
+    straight = abs(dr - dc)
+    return (diag // 2) * 10 + ((diag + 1) // 2) * 5 + straight * 5
+
+
+def _chebyshev_squares(a: tuple[int, int], b: tuple[int, int]) -> int:
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def _is_within_weapon_reach(
+    attacker_pos: tuple[int, int],
+    target_pos: tuple[int, int],
+    reach_ft: int,
+) -> bool:
+    """Check if target is within weapon reach.
+    10-ft reach uses Chebyshev special case.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2379)
+    """
+    if reach_ft == 10:
+        return 0 < _chebyshev_squares(attacker_pos, target_pos) <= 2
+    return 0 < _grid_distance_ft(attacker_pos, target_pos) <= reach_ft
+
+
+# ---------------------------------------------------------------------------
+# Private evaluator helpers
+# ---------------------------------------------------------------------------
+
+def _count_pcs_in_enemy_reach(
+    enemy: EnemySnapshot, state: RoundState,
+) -> int:
+    """Count living PCs within standard melee reach (5 ft) of an enemy."""
+    count = 0
+    for pc in state.pcs.values():
+        if pc.current_hp > 0 and _grid_distance_ft(enemy.position, pc.position) <= 5:
+            count += 1
+    return count
+
+
+def _find_weapon(
+    actor_snap: CombatantSnapshot, weapon_name: str,
+) -> object | None:
+    """Find an EquippedWeapon by name. Falls back to first weapon."""
+    for eq in actor_snap.character.equipped_weapons:
+        if eq.weapon.name == weapon_name:
+            return eq
+    if actor_snap.character.equipped_weapons:
+        return actor_snap.character.equipped_weapons[0]
+    return None
+
+
+def _build_mock_spatial(
+    commander_name: str, state: RoundState,
+) -> SpatialQueries:
+    """Build MockSpatialQueries from RoundState for tactic evaluation.
+
+    Approximates spatial relationships from snapshot positions.
+    BFS pathfinding is replaced by straight-line distance.
+    """
+    from pf2e.tactics import MockSpatialQueries
+
+    # Banner aura
+    if state.banner_planted and state.banner_position is not None:
+        center = state.banner_position
+        radius = 40
+    else:
+        center = state.pcs[commander_name].position if commander_name in state.pcs else None
+        radius = 30
+
+    in_aura: dict[str, bool] = {}
+    for name, pc in state.pcs.items():
+        if center is not None:
+            in_aura[name] = _grid_distance_ft(pc.position, center) <= radius
+        else:
+            in_aura[name] = False
+
+    reachable: dict[str, list[str]] = {}
+    for pc_name, pc in state.pcs.items():
+        reach = melee_reach_ft(pc.character)
+        reachable[pc_name] = [
+            en_name for en_name, en in state.enemies.items()
+            if en.current_hp > 0
+            and _is_within_weapon_reach(pc.position, en.position, reach)
+        ]
+
+    adjacencies: set[tuple[str, str]] = set()
+    distances: dict[tuple[str, str], int] = {}
+    all_entries = [(n, p.position) for n, p in state.pcs.items()]
+    all_entries += [(n, e.position) for n, e in state.enemies.items()]
+    for i, (n1, p1) in enumerate(all_entries):
+        for n2, p2 in all_entries[i + 1:]:
+            d = _grid_distance_ft(p1, p2)
+            distances[(n1, n2)] = d
+            if d <= 5:
+                adjacencies.add((n1, n2))
+
+    return MockSpatialQueries(
+        in_aura=in_aura,
+        reachable_enemies=reachable,
+        adjacencies=adjacencies,
+        distances=distances,
+    )
+
+
+def _build_tactic_context(
+    actor_name: str, state: RoundState, spatial: SpatialQueries,
+) -> object:
+    """Build a TacticContext from RoundState snapshots (duck-typed)."""
+    from pf2e.tactics import TacticContext
+
+    commander_snap = state.pcs[actor_name]
+    squadmate_snaps = [
+        pc for name, pc in state.pcs.items()
+        if name != actor_name and pc.current_hp > 0
+    ]
+    enemy_list = [e for e in state.enemies.values() if e.current_hp > 0]
+    return TacticContext(
+        commander=commander_snap,          # type: ignore[arg-type]
+        squadmates=squadmate_snaps,        # type: ignore[arg-type]
+        enemies=enemy_list,                # type: ignore[arg-type]
+        banner_position=state.banner_position,
+        banner_planted=state.banner_planted,
+        spatial=spatial,
+        anthem_active=state.anthem_active,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4-A: END_TURN
+# ---------------------------------------------------------------------------
+
+def evaluate_end_turn(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Always eligible. No state changes."""
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(probability=1.0, description="End turn"),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4-B: PLANT_BANNER
+# ---------------------------------------------------------------------------
+
+def evaluate_plant_banner(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Eligible iff actor has Plant Banner feat. Aetregan does not at L1.
+    (AoN: https://2e.aonprd.com/Feats.aspx?ID=7796)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None or not actor.character.has_plant_banner:
+        return ActionResult(
+            action=action, eligible=False,
+            ineligibility_reason="Plant Banner feat not present",
+        )
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            description="Plant banner at current position",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4-C: RAISE_SHIELD
+# ---------------------------------------------------------------------------
+
+def evaluate_raise_shield(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Raise Shield for +2 AC. Danger-weighted EV.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2320)
+    CP6 calibration target: danger estimation is approximate.
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not found as PC")
+    if actor.character.shield is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No shield equipped")
+    if actor.shield_raised:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Shield already raised")
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            conditions_applied={action.actor_name: ("shield_raised",)},
+            description="Raise Shield (+2 AC)",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4-D: STEP
+# ---------------------------------------------------------------------------
+
+def evaluate_step(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Step 5 ft to target_position. Always eligible if position set.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2321)
+    """
+    if action.target_position is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No target position specified")
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            position_changes={action.actor_name: action.target_position},
+            description=f"Step to {action.target_position}",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4-E: STRIDE
+# ---------------------------------------------------------------------------
+
+def evaluate_stride(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Stride to target_position. Always eligible if position set.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2320)
+    """
+    if action.target_position is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No target position specified")
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            position_changes={action.actor_name: action.target_position},
+            description=f"Stride to {action.target_position}",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4-F: STRIKE
+# ---------------------------------------------------------------------------
+
+def evaluate_strike(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Strike with a weapon. Uses MAP from actor's map_count.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2322)
+    (AoN MAP: https://2e.aonprd.com/Rules.aspx?ID=220)
+    """
+    # Handle PC Strike
+    pc_actor = state.pcs.get(action.actor_name)
+    if pc_actor is not None:
+        return _evaluate_pc_strike(action, state, pc_actor)
+
+    # Handle enemy Strike
+    enemy_actor = state.enemies.get(action.actor_name)
+    if enemy_actor is not None:
+        return _evaluate_enemy_strike(action, state, enemy_actor)
+
+    return ActionResult(action=action, eligible=False,
+                       ineligibility_reason="Actor not found")
+
+
+def _evaluate_pc_strike(
+    action: Action, state: RoundState, actor: CombatantSnapshot,
+) -> ActionResult:
+    """PC Strike against an enemy target."""
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"Target {action.target_name!r} not found or dead")
+
+    equipped = _find_weapon(actor, action.weapon_name)
+    if equipped is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No weapon found")
+
+    reach = melee_reach_ft(actor.character)
+    if not _is_within_weapon_reach(actor.position, target.position, reach):
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Target out of weapon reach")
+
+    # MAP: map_count tracks attacks already taken (0-indexed)
+    # map_penalty expects 1-indexed attack_number
+    penalty = map_penalty(actor.map_count + 1, equipped.weapon.is_agile)
+    bonus = attack_bonus(actor, equipped, penalty)  # type: ignore[arg-type]
+
+    # Effective AC: off-guard from condition OR prone
+    effective_off_guard = target.off_guard or target.prone
+    effective_ac = target.ac - (2 if effective_off_guard else 0)
+
+    outcomes_d20 = enumerate_d20_outcomes(bonus, effective_ac)
+
+    hit_dmg = damage_avg(actor, equipped)  # type: ignore[arg-type]
+    deadly = equipped.weapon.deadly_die
+    deadly_extra = die_average(deadly) if deadly else 0.0
+    crit_dmg = hit_dmg * 2 + deadly_extra
+
+    miss_prob = (outcomes_d20.failure + outcomes_d20.critical_failure) / 20
+    hit_prob = outcomes_d20.success / 20
+    crit_prob = outcomes_d20.critical_success / 20
+
+    outcomes: list[ActionOutcome] = []
+    if miss_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=miss_prob,
+            description=f"Miss ({miss_prob:.0%})",
+        ))
+    if hit_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=hit_prob,
+            hp_changes={action.target_name: -hit_dmg},
+            description=f"Hit for {hit_dmg:.1f} ({hit_prob:.0%})",
+        ))
+    if crit_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_prob,
+            hp_changes={action.target_name: -crit_dmg},
+            description=f"Crit for {crit_dmg:.1f} ({crit_prob:.0%})",
+        ))
+    if not outcomes:
+        outcomes.append(ActionOutcome(probability=1.0))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+def _evaluate_enemy_strike(
+    action: Action, state: RoundState, actor: EnemySnapshot,
+) -> ActionResult:
+    """Enemy Strike against a PC target.
+
+    Simplification: enemy MAP not tracked per snapshot. Each Strike
+    uses raw attack_bonus. This overestimates enemy damage (conservative).
+    """
+    target = state.pcs.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"Target {action.target_name!r} not found or dead")
+
+    if _grid_distance_ft(actor.position, target.position) > 5:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Target out of reach")
+
+    if not actor.damage_dice:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Enemy has no modeled offense")
+
+    target_ac = armor_class(target)  # type: ignore[arg-type]
+    outcomes_d20 = enumerate_d20_outcomes(actor.attack_bonus, target_ac)
+
+    # Parse damage
+    if "d" in actor.damage_dice:
+        parts = actor.damage_dice.split("d", 1)
+        num_dice = int(parts[0])
+        hit_dmg = num_dice * die_average(f"d{parts[1]}") + actor.damage_bonus
+    else:
+        hit_dmg = float(actor.damage_bonus)
+    crit_dmg = hit_dmg * 2
+
+    miss_prob = (outcomes_d20.failure + outcomes_d20.critical_failure) / 20
+    hit_prob = outcomes_d20.success / 20
+    crit_prob = outcomes_d20.critical_success / 20
+
+    outcomes: list[ActionOutcome] = []
+    if miss_prob > 0:
+        outcomes.append(ActionOutcome(probability=miss_prob))
+    if hit_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=hit_prob,
+            hp_changes={action.target_name: -hit_dmg},
+        ))
+    if crit_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_prob,
+            hp_changes={action.target_name: -crit_dmg},
+        ))
+    if not outcomes:
+        outcomes.append(ActionOutcome(probability=1.0))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+# ---------------------------------------------------------------------------
+# 4-G: TRIP
+# ---------------------------------------------------------------------------
+
+def evaluate_trip(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Trip: Athletics check vs Reflex DC. Has attack trait (uses MAP).
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2309)
+    (AoN Prone: https://2e.aonprd.com/Conditions.aspx?ID=88)
+    Prone value is a CP6 calibration target.
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"Target {action.target_name!r} not found or dead")
+
+    reach = melee_reach_ft(actor.character)
+    if not _is_within_weapon_reach(actor.position, target.position, reach):
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Target out of melee reach")
+
+    athletics = skill_bonus(actor.character, Skill.ATHLETICS)
+    penalty = map_penalty(actor.map_count + 1, agile=False)
+    frightened_pen = -actor.frightened
+    effective_bonus = athletics + penalty + frightened_pen
+
+    reflex_dc = 10 + target.saves[SaveType.REFLEX]
+    outcomes_d20 = enumerate_d20_outcomes(effective_bonus, reflex_dc)
+
+    crit_s = outcomes_d20.critical_success / 20
+    success = outcomes_d20.success / 20
+    failure = outcomes_d20.failure / 20
+    crit_f = outcomes_d20.critical_failure / 20
+
+    outcomes: list[ActionOutcome] = []
+    # Crit success: prone (same as success for Trip)
+    if crit_s > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_s,
+            conditions_applied={action.target_name: ("prone", "off_guard")},
+            description=f"Crit success: {action.target_name} prone",
+        ))
+    if success > 0:
+        outcomes.append(ActionOutcome(
+            probability=success,
+            conditions_applied={action.target_name: ("prone", "off_guard")},
+            description=f"Success: {action.target_name} prone",
+        ))
+    if failure > 0:
+        outcomes.append(ActionOutcome(
+            probability=failure,
+            description="Failure: no effect",
+        ))
+    if crit_f > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_f,
+            conditions_applied={action.actor_name: ("prone",)},
+            description=f"Crit failure: {action.actor_name} prone",
+        ))
+    if not outcomes:
+        outcomes.append(ActionOutcome(probability=1.0))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+# ---------------------------------------------------------------------------
+# 4-H: DISARM
+# ---------------------------------------------------------------------------
+
+def evaluate_disarm(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Disarm: Athletics vs Reflex DC. Has attack trait (uses MAP).
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2300)
+    Crit success: -2 penalty approximation (item drop deferred to CP6).
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"Target {action.target_name!r} not found or dead")
+
+    reach = melee_reach_ft(actor.character)
+    if not _is_within_weapon_reach(actor.position, target.position, reach):
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Target out of melee reach")
+
+    athletics = skill_bonus(actor.character, Skill.ATHLETICS)
+    penalty = map_penalty(actor.map_count + 1, agile=False)
+    frightened_pen = -actor.frightened
+    effective_bonus = athletics + penalty + frightened_pen
+
+    reflex_dc = 10 + target.saves[SaveType.REFLEX]
+    outcomes_d20 = enumerate_d20_outcomes(effective_bonus, reflex_dc)
+
+    crit_s = outcomes_d20.critical_success / 20
+    success = outcomes_d20.success / 20
+    failure = outcomes_d20.failure / 20
+    crit_f = outcomes_d20.critical_failure / 20
+
+    outcomes: list[ActionOutcome] = []
+    if crit_s > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_s,
+            conditions_applied={action.target_name: ("disarmed",)},
+            description=f"Crit success: {action.target_name} disarmed (-2 atk)",
+        ))
+    if success > 0:
+        outcomes.append(ActionOutcome(
+            probability=success,
+            conditions_applied={action.target_name: ("disarmed",)},
+            description=f"Success: {action.target_name} -2 attack penalty",
+        ))
+    if failure > 0:
+        outcomes.append(ActionOutcome(
+            probability=failure,
+            description="Failure: no effect",
+        ))
+    if crit_f > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_f,
+            conditions_applied={action.actor_name: ("off_guard",)},
+            description=f"Crit failure: {action.actor_name} off-guard",
+        ))
+    if not outcomes:
+        outcomes.append(ActionOutcome(probability=1.0))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+# ---------------------------------------------------------------------------
+# 4-I: DEMORALIZE
+# ---------------------------------------------------------------------------
+
+def evaluate_demoralize(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Demoralize: Intimidation vs Will DC. NOT affected by Deceptive Tactics.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2304)
+    (AoN Frightened: https://2e.aonprd.com/Conditions.aspx?ID=42)
+    LoS simplified: assume LoS if within 30 ft.
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"Target {action.target_name!r} not found or dead")
+
+    if "demoralize_immune" in target.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"{action.target_name} is immune to Demoralize")
+
+    dist = _grid_distance_ft(actor.position, target.position)
+    if dist > 30:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Target beyond 30 ft")
+
+    # Always use Intimidation (Deceptive Tactics does NOT apply to Demoralize)
+    bonus = skill_bonus(actor.character, Skill.INTIMIDATION) - actor.frightened
+    will_dc = 10 + target.saves[SaveType.WILL]
+    outcomes_d20 = enumerate_d20_outcomes(bonus, will_dc)
+
+    crit_s = outcomes_d20.critical_success / 20
+    success = outcomes_d20.success / 20
+    failure = outcomes_d20.failure / 20
+    crit_f = outcomes_d20.critical_failure / 20
+
+    outcomes: list[ActionOutcome] = []
+    if crit_s > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_s,
+            conditions_applied={action.target_name: ("frightened_2",)},
+            description=f"Crit success: {action.target_name} Frightened 2",
+        ))
+    if success > 0:
+        outcomes.append(ActionOutcome(
+            probability=success,
+            conditions_applied={action.target_name: ("frightened_1",)},
+            description=f"Success: {action.target_name} Frightened 1",
+        ))
+    if failure > 0:
+        outcomes.append(ActionOutcome(
+            probability=failure,
+            conditions_applied={action.target_name: ("demoralize_immune",)},
+            description=f"Failure: {action.target_name} immune to further Demoralize",
+        ))
+    if crit_f > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_f,
+            conditions_applied={
+                action.target_name: ("demoralize_immune",),
+                action.actor_name: ("frightened_1",),
+            },
+            description=f"Crit failure: immune + {action.actor_name} Frightened 1",
+        ))
+    if not outcomes:
+        outcomes.append(ActionOutcome(probability=1.0))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+# ---------------------------------------------------------------------------
+# 4-J: CREATE_A_DIVERSION
+# ---------------------------------------------------------------------------
+
+def evaluate_create_a_diversion(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Create a Diversion: Deception (or Warfare Lore via Deceptive Tactics)
+    vs Perception DC. On success: target off-guard vs actor.
+    (AoN: https://2e.aonprd.com/Skills.aspx?ID=38)
+    (AoN Deceptive Tactics: https://2e.aonprd.com/Feats.aspx?ID=7794)
+    Next-turn carry-over not scored — CP6 calibration target.
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"Target {action.target_name!r} not found or dead")
+
+    if "diversion_immune" in target.conditions:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"{action.target_name} immune to Create a Diversion")
+
+    # Deceptive Tactics: use Warfare Lore instead of Deception
+    if actor.character.has_deceptive_tactics:
+        bonus = lore_bonus(actor.character, "Warfare")
+    else:
+        bonus = skill_bonus(actor.character, Skill.DECEPTION)
+    bonus -= actor.frightened
+
+    perception_dc = 10 + target.perception_bonus
+    outcomes_d20 = enumerate_d20_outcomes(bonus, perception_dc)
+
+    # Create a Diversion uses success/failure only (no crit success/crit failure effects)
+    success_faces = outcomes_d20.critical_success + outcomes_d20.success
+    failure_faces = outcomes_d20.failure + outcomes_d20.critical_failure
+    success_prob = success_faces / 20
+    failure_prob = failure_faces / 20
+
+    outcomes: list[ActionOutcome] = []
+    if success_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=success_prob,
+            conditions_applied={action.target_name: ("off_guard",)},
+            description=f"Success: {action.target_name} off-guard vs {action.actor_name}",
+        ))
+    if failure_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=failure_prob,
+            conditions_applied={action.target_name: ("diversion_immune",)},
+            description=f"Failure: {action.target_name} immune to further Diversion",
+        ))
+    if not outcomes:
+        outcomes.append(ActionOutcome(probability=1.0))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+# ---------------------------------------------------------------------------
+# 4-K: FEINT
+# ---------------------------------------------------------------------------
+
+def evaluate_feint(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Feint: Deception (or Warfare Lore via Deceptive Tactics) vs Perception DC.
+    Requires melee reach and at least 2 actions remaining.
+    No immunity on failure.
+    (AoN: https://2e.aonprd.com/Skills.aspx?ID=38)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+
+    if actor.actions_remaining < 2:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Feint requires at least 2 actions remaining")
+
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"Target {action.target_name!r} not found or dead")
+
+    reach = melee_reach_ft(actor.character)
+    if not _is_within_weapon_reach(actor.position, target.position, reach):
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Target out of melee reach")
+
+    # Deceptive Tactics
+    if actor.character.has_deceptive_tactics:
+        bonus = lore_bonus(actor.character, "Warfare")
+    else:
+        bonus = skill_bonus(actor.character, Skill.DECEPTION)
+    bonus -= actor.frightened
+
+    perception_dc = 10 + target.perception_bonus
+    outcomes_d20 = enumerate_d20_outcomes(bonus, perception_dc)
+
+    crit_s = outcomes_d20.critical_success / 20
+    success = outcomes_d20.success / 20
+    failure = outcomes_d20.failure / 20
+    crit_f = outcomes_d20.critical_failure / 20
+
+    outcomes: list[ActionOutcome] = []
+    if crit_s > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_s,
+            conditions_applied={action.target_name: ("off_guard",)},
+            description=f"Crit success: {action.target_name} off-guard until next turn",
+        ))
+    if success > 0:
+        outcomes.append(ActionOutcome(
+            probability=success,
+            conditions_applied={action.target_name: ("off_guard",)},
+            description=f"Success: {action.target_name} off-guard vs next attack",
+        ))
+    if failure > 0:
+        outcomes.append(ActionOutcome(
+            probability=failure,
+            description="Failure: no effect (no immunity)",
+        ))
+    if crit_f > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_f,
+            conditions_applied={action.actor_name: ("off_guard",)},
+            description=f"Crit failure: {action.actor_name} off-guard vs target",
+        ))
+    if not outcomes:
+        outcomes.append(ActionOutcome(probability=1.0))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+# ---------------------------------------------------------------------------
+# 4-L: SHIELD_BLOCK (reaction)
+# ---------------------------------------------------------------------------
+
+def evaluate_shield_block(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Shield Block: absorb damage up to shield hardness. C1 greedy policy.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2320)
+    (AoN Steel Shield hardness 5: https://2e.aonprd.com/Shields.aspx?ID=3)
+    Shield breakage out of scope for CP5.1.3c.
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+    if not actor.shield_raised:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Shield not raised")
+    if actor.character.shield is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No shield equipped")
+    if not actor.character.has_shield_block:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No Shield Block feat")
+
+    hardness = actor.character.shield.hardness
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            description=f"Shield Block absorbs up to {hardness} damage",
+            reactions_consumed={action.actor_name: 1},
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4-M: INTERCEPT_ATTACK (reaction)
+# ---------------------------------------------------------------------------
+
+def evaluate_intercept_attack(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Intercept Attack: Guardian redirects attack to self. C1 greedy policy.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=3305)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None or actor.character.guardian_reactions == 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Not a Guardian")
+    if actor.guardian_reactions_available <= 0:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No guardian reactions available")
+
+    target_ally = state.pcs.get(action.target_name)
+    if target_ally is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Target ally not found")
+
+    if _grid_distance_ft(actor.position, target_ally.position) > 10:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Ally not within 10 ft")
+
+    resistance = guardians_armor_resistance(actor.character.level)
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            description=f"Intercept Attack: {resistance} physical resistance",
+            reactions_consumed={action.actor_name: 1},
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4-N: ACTIVATE_TACTIC
+# ---------------------------------------------------------------------------
+
+def evaluate_activate_tactic(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Activate a prepared commander tactic.
+    Wraps evaluate_tactic() from pf2e/tactics.py.
+    (AoN: https://2e.aonprd.com/Tactics.aspx)
+    """
+    from pf2e.tactics import FOLIO_TACTICS, PREPARED_TACTICS, evaluate_tactic
+
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not a PC")
+
+    # Look up tactic definition by display name
+    tactic_key = next(
+        (k for k, d in FOLIO_TACTICS.items() if d.name == action.tactic_name),
+        None,
+    )
+    if tactic_key is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"Unknown tactic: {action.tactic_name!r}")
+    if tactic_key not in PREPARED_TACTICS:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=f"Tactic {action.tactic_name!r} not prepared")
+
+    defn = FOLIO_TACTICS[tactic_key]
+    if actor.actions_remaining < defn.action_cost:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=(
+                               f"{action.tactic_name} costs {defn.action_cost} actions, "
+                               f"only {actor.actions_remaining} remaining"
+                           ))
+
+    # Build spatial and context
+    if spatial is None:
+        spatial = _build_mock_spatial(action.actor_name, state)
+    ctx = _build_tactic_context(action.actor_name, state, spatial)
+
+    result = evaluate_tactic(defn, ctx)
+    if not result.eligible:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason=result.ineligibility_reason)
+
+    # Convert TacticResult to ActionResult outcomes
+    outcomes: list[ActionOutcome] = []
+
+    if result.expected_damage_dealt > 0 and result.best_target_enemy:
+        # Strike Hard! style: EV-folded damage
+        outcomes.append(ActionOutcome(
+            probability=1.0,
+            hp_changes={result.best_target_enemy: -result.expected_damage_dealt},
+            description=result.justification,
+        ))
+    elif result.condition_probabilities:
+        # Tactical Takedown style: prone probability
+        for target_name, cond_probs in result.condition_probabilities.items():
+            for cond, prob in cond_probs.items():
+                if prob > 0:
+                    outcomes.append(ActionOutcome(
+                        probability=prob,
+                        conditions_applied={target_name: (cond,)},
+                        description=f"{result.justification}",
+                    ))
+                if 1 - prob > 0:
+                    outcomes.append(ActionOutcome(
+                        probability=1 - prob,
+                        description=f"{action.tactic_name}: {cond} resisted",
+                    ))
+                break  # One condition per target for now
+            break  # One target for now
+    else:
+        # Defensive tactics (Gather to Me!) — no direct state changes
+        outcomes.append(ActionOutcome(
+            probability=1.0,
+            description=result.justification,
+        ))
+
+    if not outcomes:
+        outcomes.append(ActionOutcome(probability=1.0, description=result.justification))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+# ---------------------------------------------------------------------------
+# Step 5: Dispatcher
+# ---------------------------------------------------------------------------
+
+_ACTION_EVALUATORS: dict[ActionType, Callable[..., ActionResult]] = {
+    ActionType.END_TURN: evaluate_end_turn,
+    ActionType.PLANT_BANNER: evaluate_plant_banner,
+    ActionType.RAISE_SHIELD: evaluate_raise_shield,
+    ActionType.STEP: evaluate_step,
+    ActionType.STRIDE: evaluate_stride,
+    ActionType.STRIKE: evaluate_strike,
+    ActionType.TRIP: evaluate_trip,
+    ActionType.DISARM: evaluate_disarm,
+    ActionType.DEMORALIZE: evaluate_demoralize,
+    ActionType.CREATE_A_DIVERSION: evaluate_create_a_diversion,
+    ActionType.FEINT: evaluate_feint,
+    ActionType.SHIELD_BLOCK: evaluate_shield_block,
+    ActionType.INTERCEPT_ATTACK: evaluate_intercept_attack,
+    ActionType.ACTIVATE_TACTIC: evaluate_activate_tactic,
+}
+
+
+def evaluate_action(
+    action: Action,
+    state: RoundState,
+    spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Dispatch to the appropriate evaluator based on action.type.
+
+    EVER_READY is not in the dispatcher — it's a passive feature,
+    not an action. (AoN: https://2e.aonprd.com/Classes.aspx?ID=67)
+    """
+    evaluator = _ACTION_EVALUATORS.get(action.type)
+    if evaluator is None:
+        return ActionResult(
+            action=action, eligible=False,
+            ineligibility_reason=f"No evaluator registered for {action.type}",
+        )
+    return evaluator(action, state, spatial)

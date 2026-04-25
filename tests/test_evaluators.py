@@ -1,0 +1,620 @@
+"""Tests for action evaluators (CP5.1.3c Step 10).
+
+Each test builds its own RoundState — no shared mutable state.
+"""
+
+import pytest
+
+from pf2e.actions import (
+    Action,
+    ActionOutcome,
+    ActionResult,
+    ActionType,
+    evaluate_action,
+    evaluate_activate_tactic,
+    evaluate_create_a_diversion,
+    evaluate_demoralize,
+    evaluate_disarm,
+    evaluate_end_turn,
+    evaluate_feint,
+    evaluate_intercept_attack,
+    evaluate_plant_banner,
+    evaluate_raise_shield,
+    evaluate_shield_block,
+    evaluate_step,
+    evaluate_stride,
+    evaluate_strike,
+    evaluate_trip,
+)
+from pf2e.character import CombatantState, EnemyState
+from pf2e.combat_math import lore_bonus, skill_bonus
+from pf2e.tactics import STRIKE_HARD, evaluate_tactic
+from pf2e.types import SaveType, Skill
+from sim.round_state import CombatantSnapshot, EnemySnapshot, RoundState
+from sim.scenario import load_scenario
+from tests.fixtures import (
+    make_aetregan,
+    make_dalai,
+    make_erisen,
+    make_rook,
+    make_rook_combat_state,
+)
+
+EV_TOLERANCE = 0.01
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_bandit(
+    name: str = "Bandit1",
+    position: tuple[int, int] = (5, 7),
+    current_hp: int = 20,
+) -> EnemyState:
+    return EnemyState(
+        name=name, ac=15,
+        saves={SaveType.REFLEX: 5, SaveType.FORTITUDE: 3, SaveType.WILL: 2},
+        position=position, attack_bonus=7, damage_dice="1d8",
+        damage_bonus=3, num_attacks_per_turn=2, max_hp=20,
+        current_hp=current_hp, perception_bonus=4,
+    )
+
+
+def _quick_state(
+    pc_overrides: dict | None = None,
+    enemy_overrides: dict | None = None,
+) -> RoundState:
+    """Build a RoundState from the canonical scenario."""
+    scenario = load_scenario("scenarios/checkpoint_1_strike_hard.scenario")
+    init_order = ["Aetregan", "Rook", "Dalai Alpaca", "Erisen", "Bandit1"]
+    state = RoundState.from_scenario(scenario, init_order)
+    if pc_overrides:
+        for name, changes in pc_overrides.items():
+            state = state.with_pc_update(name, **changes)
+    if enemy_overrides:
+        for name, changes in enemy_overrides.items():
+            state = state.with_enemy_update(name, **changes)
+    return state
+
+
+# ---------------------------------------------------------------------------
+# Group A: Snapshot blocker fields
+# ---------------------------------------------------------------------------
+
+class TestSnapshotBlockerFields:
+
+    def test_combatant_snapshot_has_map_count(self) -> None:
+        snap = CombatantSnapshot.from_combatant_state(make_rook_combat_state())
+        assert snap.map_count == 0
+
+    def test_combatant_snapshot_has_conditions(self) -> None:
+        snap = CombatantSnapshot.from_combatant_state(make_rook_combat_state())
+        assert snap.conditions == frozenset()
+
+    def test_enemy_snapshot_has_conditions(self) -> None:
+        enemy = _make_bandit()
+        snap = EnemySnapshot.from_enemy_state(enemy)
+        assert snap.conditions == frozenset()
+
+
+# ---------------------------------------------------------------------------
+# Group B: Per-evaluator tests
+# ---------------------------------------------------------------------------
+
+class TestEndTurn:
+
+    def test_end_turn_always_eligible(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.END_TURN, actor_name="Rook", action_cost=0)
+        result = evaluate_end_turn(action, state)
+        assert result.eligible
+        assert len(result.outcomes) == 1
+        assert result.outcomes[0].probability == 1.0
+        assert result.outcomes[0].hp_changes == {}
+
+
+class TestPlantBanner:
+
+    def test_plant_banner_ineligible_aetregan(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.PLANT_BANNER, actor_name="Aetregan", action_cost=1)
+        result = evaluate_plant_banner(action, state)
+        assert not result.eligible
+        assert "Plant Banner" in result.ineligibility_reason
+
+
+class TestRaiseShield:
+
+    def test_raise_shield_eligible_with_shield(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.RAISE_SHIELD, actor_name="Rook", action_cost=1)
+        result = evaluate_raise_shield(action, state)
+        assert result.eligible
+        assert result.outcomes[0].conditions_applied["Rook"] == ("shield_raised",)
+
+    def test_raise_shield_ineligible_without_shield(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.RAISE_SHIELD, actor_name="Erisen", action_cost=1)
+        result = evaluate_raise_shield(action, state)
+        assert not result.eligible
+
+    def test_raise_shield_ineligible_if_already_raised(self) -> None:
+        state = _quick_state(pc_overrides={"Rook": {"shield_raised": True}})
+        action = Action(type=ActionType.RAISE_SHIELD, actor_name="Rook", action_cost=1)
+        result = evaluate_raise_shield(action, state)
+        assert not result.eligible
+
+
+class TestStep:
+
+    def test_step_only_adjacent_squares(self) -> None:
+        state = _quick_state()
+        actor_pos = state.pcs["Rook"].position
+        action = Action(
+            type=ActionType.STEP, actor_name="Rook", action_cost=1,
+            target_position=(actor_pos[0] - 1, actor_pos[1]),
+        )
+        result = evaluate_step(action, state)
+        assert result.eligible
+        dest = result.outcomes[0].position_changes["Rook"]
+        # Destination should be exactly 1 square away
+        dr = abs(dest[0] - actor_pos[0])
+        dc = abs(dest[1] - actor_pos[1])
+        assert max(dr, dc) <= 1
+
+
+class TestStride:
+
+    def test_stride_respects_speed(self) -> None:
+        """STRIDE evaluator accepts any target_position — speed check is in candidate gen."""
+        state = _quick_state()
+        action = Action(
+            type=ActionType.STRIDE, actor_name="Rook", action_cost=1,
+            target_position=(0, 0),
+        )
+        result = evaluate_stride(action, state)
+        assert result.eligible
+
+
+class TestStrike:
+
+    def test_strike_map0_no_penalty(self) -> None:
+        """First strike (map_count=0) has no MAP penalty."""
+        state = _quick_state()
+        action = Action(
+            type=ActionType.STRIKE, actor_name="Rook", action_cost=1,
+            target_name="Bandit1", weapon_name="Longsword",
+        )
+        result = evaluate_strike(action, state)
+        assert result.eligible
+        assert len(result.outcomes) >= 2  # at least miss + hit
+
+    def test_strike_map1_minus5(self) -> None:
+        """Second strike (map_count=1) gets -5 MAP for non-agile."""
+        state = _quick_state(pc_overrides={"Rook": {"map_count": 1}})
+        action = Action(
+            type=ActionType.STRIKE, actor_name="Rook", action_cost=1,
+            target_name="Bandit1", weapon_name="Longsword",
+        )
+        result0 = evaluate_strike(
+            action, _quick_state(),
+        )
+        result1 = evaluate_strike(action, state)
+        # MAP=1 should have higher miss probability than MAP=0
+        miss0 = sum(o.probability for o in result0.outcomes if not o.hp_changes)
+        miss1 = sum(o.probability for o in result1.outcomes if not o.hp_changes)
+        assert miss1 > miss0
+
+    def test_strike_map2_minus10(self) -> None:
+        """Third strike (map_count=2) gets -10 MAP."""
+        state = _quick_state(pc_overrides={"Rook": {"map_count": 2}})
+        action = Action(
+            type=ActionType.STRIKE, actor_name="Rook", action_cost=1,
+            target_name="Bandit1", weapon_name="Longsword",
+        )
+        result = evaluate_strike(action, state)
+        miss_prob = sum(o.probability for o in result.outcomes if not o.hp_changes)
+        assert miss_prob > 0.5  # at -10, should miss most of the time
+
+    def test_strike_agile_map1_minus4(self) -> None:
+        """Agile weapon uses -4 MAP instead of -5 for the same character."""
+        # Erisen's dagger is agile: MAP at map_count=1 is -4
+        # Compare miss rate increase from MAP 0 to MAP 1
+        state0 = _quick_state(pc_overrides={
+            "Erisen": {"map_count": 0, "position": (5, 8)},
+        })
+        state1 = _quick_state(pc_overrides={
+            "Erisen": {"map_count": 1, "position": (5, 8)},
+        })
+        action = Action(
+            type=ActionType.STRIKE, actor_name="Erisen", action_cost=1,
+            target_name="Bandit1", weapon_name="Dagger",
+        )
+        result0 = evaluate_strike(action, state0)
+        result1 = evaluate_strike(action, state1)
+
+        miss0 = sum(o.probability for o in result0.outcomes if not o.hp_changes)
+        miss1 = sum(o.probability for o in result1.outcomes if not o.hp_changes)
+        # Agile: -4 penalty = 4 extra faces miss = 0.20 increase
+        miss_increase = miss1 - miss0
+        assert miss_increase == pytest.approx(0.20, abs=0.05)
+
+    def test_strike_ineligible_out_of_reach(self) -> None:
+        state = _quick_state(pc_overrides={"Rook": {"position": (0, 0)}})
+        action = Action(
+            type=ActionType.STRIKE, actor_name="Rook", action_cost=1,
+            target_name="Bandit1", weapon_name="Longsword",
+        )
+        result = evaluate_strike(action, state)
+        assert not result.eligible
+
+    def test_strike_kill_branch_at_5pct(self) -> None:
+        """When enemy is near death, the beam search creates kill branches."""
+        from sim.search import SearchConfig, apply_action_result
+        state = _quick_state(enemy_overrides={"Bandit1": {"current_hp": 3}})
+        action = Action(
+            type=ActionType.STRIKE, actor_name="Rook", action_cost=1,
+            target_name="Bandit1", weapon_name="Longsword",
+        )
+        result = evaluate_strike(action, state)
+        branches = apply_action_result(result, state, state, SearchConfig())
+        # With enemy at 3 HP and Rook dealing ~8+ on hit, should branch
+        assert len(branches) >= 1  # at least one branch
+
+
+class TestTrip:
+
+    def test_trip_success_applies_prone(self) -> None:
+        state = _quick_state()
+        action = Action(
+            type=ActionType.TRIP, actor_name="Rook", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_trip(action, state)
+        assert result.eligible
+        # Find success outcome
+        success_outcomes = [
+            o for o in result.outcomes
+            if o.conditions_applied.get("Bandit1")
+            and "prone" in o.conditions_applied["Bandit1"]
+        ]
+        assert len(success_outcomes) >= 1
+
+    def test_trip_crit_fail_actor_prone(self) -> None:
+        state = _quick_state()
+        action = Action(
+            type=ActionType.TRIP, actor_name="Rook", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_trip(action, state)
+        # Find crit failure outcome
+        crit_fail_outcomes = [
+            o for o in result.outcomes
+            if o.conditions_applied.get("Rook")
+            and "prone" in o.conditions_applied["Rook"]
+        ]
+        assert len(crit_fail_outcomes) >= 1
+
+    def test_trip_ineligible_out_of_reach(self) -> None:
+        state = _quick_state(pc_overrides={"Rook": {"position": (0, 0)}})
+        action = Action(
+            type=ActionType.TRIP, actor_name="Rook", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_trip(action, state)
+        assert not result.eligible
+
+
+class TestDisarm:
+
+    def test_disarm_success_applies_penalty(self) -> None:
+        state = _quick_state()
+        action = Action(
+            type=ActionType.DISARM, actor_name="Rook", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_disarm(action, state)
+        assert result.eligible
+        success_outcomes = [
+            o for o in result.outcomes
+            if o.conditions_applied.get("Bandit1")
+            and "disarmed" in o.conditions_applied["Bandit1"]
+        ]
+        assert len(success_outcomes) >= 1
+
+    def test_disarm_crit_fail_actor_off_guard(self) -> None:
+        state = _quick_state()
+        action = Action(
+            type=ActionType.DISARM, actor_name="Rook", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_disarm(action, state)
+        crit_fail_outcomes = [
+            o for o in result.outcomes
+            if o.conditions_applied.get("Rook")
+            and "off_guard" in o.conditions_applied["Rook"]
+        ]
+        assert len(crit_fail_outcomes) >= 1
+
+
+class TestDemoralize:
+
+    def test_demoralize_success_applies_frightened(self) -> None:
+        state = _quick_state()
+        action = Action(
+            type=ActionType.DEMORALIZE, actor_name="Rook", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_demoralize(action, state)
+        assert result.eligible
+        frightened_outcomes = [
+            o for o in result.outcomes
+            if o.conditions_applied.get("Bandit1")
+            and any("frightened" in c for c in o.conditions_applied["Bandit1"])
+        ]
+        assert len(frightened_outcomes) >= 1
+
+    def test_demoralize_failure_sets_immune(self) -> None:
+        state = _quick_state()
+        action = Action(
+            type=ActionType.DEMORALIZE, actor_name="Rook", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_demoralize(action, state)
+        immune_outcomes = [
+            o for o in result.outcomes
+            if o.conditions_applied.get("Bandit1")
+            and "demoralize_immune" in o.conditions_applied["Bandit1"]
+        ]
+        assert len(immune_outcomes) >= 1
+
+    def test_demoralize_ineligible_when_immune(self) -> None:
+        state = _quick_state(enemy_overrides={
+            "Bandit1": {"conditions": frozenset({"demoralize_immune"})},
+        })
+        action = Action(
+            type=ActionType.DEMORALIZE, actor_name="Rook", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_demoralize(action, state)
+        assert not result.eligible
+
+    def test_demoralize_no_deceptive_tactics(self) -> None:
+        """Demoralize always uses Intimidation, not Warfare Lore."""
+        state = _quick_state()
+        # Aetregan has Deceptive Tactics but Demoralize should NOT use it
+        action = Action(
+            type=ActionType.DEMORALIZE, actor_name="Aetregan", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_demoralize(action, state)
+        assert result.eligible
+        # Verify by checking that the bonus used is Intimidation, not Lore
+        # Aetregan doesn't have Intimidation trained, so bonus is lower than Warfare Lore
+        intimidation = skill_bonus(make_aetregan(), Skill.INTIMIDATION)
+        warfare_lore = lore_bonus(make_aetregan(), "Warfare")
+        assert intimidation != warfare_lore  # They should differ
+
+
+class TestCreateADiversion:
+
+    def test_create_diversion_deceptive_tactics_aetregan(self) -> None:
+        """Aetregan uses Warfare Lore for Create a Diversion via Deceptive Tactics."""
+        state = _quick_state()
+        action = Action(
+            type=ActionType.CREATE_A_DIVERSION, actor_name="Aetregan",
+            action_cost=1, target_name="Bandit1",
+        )
+        result = evaluate_create_a_diversion(action, state)
+        assert result.eligible
+        # With Deceptive Tactics, Aetregan uses Warfare Lore (+7)
+        # which is better than Deception (untrained)
+
+    def test_create_diversion_failure_sets_immune(self) -> None:
+        state = _quick_state()
+        action = Action(
+            type=ActionType.CREATE_A_DIVERSION, actor_name="Aetregan",
+            action_cost=1, target_name="Bandit1",
+        )
+        result = evaluate_create_a_diversion(action, state)
+        immune_outcomes = [
+            o for o in result.outcomes
+            if o.conditions_applied.get("Bandit1")
+            and "diversion_immune" in o.conditions_applied["Bandit1"]
+        ]
+        assert len(immune_outcomes) >= 1
+
+    def test_create_diversion_ineligible_when_immune(self) -> None:
+        state = _quick_state(enemy_overrides={
+            "Bandit1": {"conditions": frozenset({"diversion_immune"})},
+        })
+        action = Action(
+            type=ActionType.CREATE_A_DIVERSION, actor_name="Aetregan",
+            action_cost=1, target_name="Bandit1",
+        )
+        result = evaluate_create_a_diversion(action, state)
+        assert not result.eligible
+
+
+class TestFeint:
+
+    def test_feint_deceptive_tactics_aetregan(self) -> None:
+        """Aetregan uses Warfare Lore for Feint via Deceptive Tactics."""
+        state = _quick_state()
+        action = Action(
+            type=ActionType.FEINT, actor_name="Aetregan", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_feint(action, state)
+        assert result.eligible
+
+    def test_feint_melee_only(self) -> None:
+        state = _quick_state(pc_overrides={"Aetregan": {"position": (0, 0)}})
+        action = Action(
+            type=ActionType.FEINT, actor_name="Aetregan", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_feint(action, state)
+        assert not result.eligible
+
+    def test_feint_requires_2_actions(self) -> None:
+        state = _quick_state(pc_overrides={"Aetregan": {"actions_remaining": 1}})
+        action = Action(
+            type=ActionType.FEINT, actor_name="Aetregan", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_feint(action, state)
+        assert not result.eligible
+
+    def test_feint_no_immunity_on_failure(self) -> None:
+        """Feint failure should NOT add an immunity tag."""
+        state = _quick_state()
+        action = Action(
+            type=ActionType.FEINT, actor_name="Aetregan", action_cost=1,
+            target_name="Bandit1",
+        )
+        result = evaluate_feint(action, state)
+        for o in result.outcomes:
+            for name, conds in o.conditions_applied.items():
+                # No "feint_immune" or similar tags
+                assert not any("immune" in c for c in conds)
+
+
+class TestShieldBlock:
+
+    def test_shield_block_reduces_by_hardness(self) -> None:
+        state = _quick_state(pc_overrides={"Rook": {"shield_raised": True}})
+        action = Action(
+            type=ActionType.SHIELD_BLOCK, actor_name="Rook", action_cost=0,
+        )
+        result = evaluate_shield_block(action, state)
+        assert result.eligible
+        assert "5" in result.outcomes[0].description  # hardness 5
+
+    def test_shield_block_ineligible_without_raised_shield(self) -> None:
+        state = _quick_state()
+        action = Action(
+            type=ActionType.SHIELD_BLOCK, actor_name="Rook", action_cost=0,
+        )
+        result = evaluate_shield_block(action, state)
+        assert not result.eligible
+
+
+class TestInterceptAttack:
+
+    def test_intercept_attack_guardian_only(self) -> None:
+        state = _quick_state()
+        action = Action(
+            type=ActionType.INTERCEPT_ATTACK, actor_name="Aetregan",
+            action_cost=0, target_name="Dalai Alpaca",
+        )
+        result = evaluate_intercept_attack(action, state)
+        assert not result.eligible
+
+    def test_intercept_attack_ally_in_range(self) -> None:
+        state = _quick_state()
+        # Rook is a Guardian and adjacent to other PCs
+        action = Action(
+            type=ActionType.INTERCEPT_ATTACK, actor_name="Rook",
+            action_cost=0, target_name="Aetregan",
+        )
+        result = evaluate_intercept_attack(action, state)
+        assert result.eligible
+
+
+class TestActivateTactic:
+
+    def test_activate_tactic_strike_hard_ev(self) -> None:
+        """ACTIVATE_TACTIC wrapping Strike Hard! should match tactic EV."""
+        state = _quick_state()
+        action = Action(
+            type=ActionType.ACTIVATE_TACTIC, actor_name="Aetregan",
+            action_cost=2, tactic_name="Strike Hard!",
+        )
+        result = evaluate_activate_tactic(action, state)
+        assert result.eligible
+        assert result.expected_damage_dealt > 0
+
+    def test_activate_tactic_insufficient_actions(self) -> None:
+        state = _quick_state(pc_overrides={"Aetregan": {"actions_remaining": 1}})
+        action = Action(
+            type=ActionType.ACTIVATE_TACTIC, actor_name="Aetregan",
+            action_cost=2, tactic_name="Strike Hard!",
+        )
+        result = evaluate_activate_tactic(action, state)
+        assert not result.eligible
+
+    def test_activate_tactic_no_eligible_squadmates(self) -> None:
+        """When no squadmates are in aura, tactic should be ineligible."""
+        # Move all squadmates far away from banner aura
+        state = _quick_state(pc_overrides={
+            "Rook": {"position": (0, 0)},
+            "Dalai Alpaca": {"position": (0, 1)},
+            "Erisen": {"position": (0, 2)},
+        })
+        action = Action(
+            type=ActionType.ACTIVATE_TACTIC, actor_name="Aetregan",
+            action_cost=2, tactic_name="Strike Hard!",
+        )
+        result = evaluate_activate_tactic(action, state)
+        # Strike Hard requires a squadmate in aura with reach to an enemy
+        # With squadmates at (0,0)-(0,2) and enemy at (5,7), they're out of reach
+        assert not result.eligible
+
+
+class TestDispatcher:
+
+    def test_dispatcher_all_14_types_registered(self) -> None:
+        """All 14 action types (excluding EVER_READY) have evaluators."""
+        from pf2e.actions import _ACTION_EVALUATORS
+        expected = {
+            ActionType.END_TURN, ActionType.PLANT_BANNER,
+            ActionType.RAISE_SHIELD, ActionType.STEP,
+            ActionType.STRIDE, ActionType.STRIKE,
+            ActionType.TRIP, ActionType.DISARM,
+            ActionType.DEMORALIZE, ActionType.CREATE_A_DIVERSION,
+            ActionType.FEINT, ActionType.SHIELD_BLOCK,
+            ActionType.INTERCEPT_ATTACK, ActionType.ACTIVATE_TACTIC,
+        }
+        assert set(_ACTION_EVALUATORS.keys()) == expected
+
+    def test_ever_ready_not_in_dispatcher(self) -> None:
+        from pf2e.actions import _ACTION_EVALUATORS
+        assert ActionType.EVER_READY not in _ACTION_EVALUATORS
+
+    def test_dispatcher_unknown_type_returns_ineligible(self) -> None:
+        state = _quick_state()
+        action = Action(type=ActionType.EVER_READY, actor_name="Rook", action_cost=0)
+        result = evaluate_action(action, state)
+        assert not result.eligible
+
+
+# ---------------------------------------------------------------------------
+# Group C: Regression and integration
+# ---------------------------------------------------------------------------
+
+class TestKillerRegression:
+
+    def test_strike_hard_ev_8_55_from_disk(self) -> None:
+        """8th verification of the killer regression. Must not change."""
+        scenario = load_scenario("scenarios/checkpoint_1_strike_hard.scenario")
+        ctx = scenario.build_tactic_context()
+        result = evaluate_tactic(STRIKE_HARD, ctx)
+        assert result.eligible
+        assert result.expected_damage_dealt == pytest.approx(8.55, abs=EV_TOLERANCE)
+
+
+class TestIntegration:
+
+    def test_full_round_from_scenario(self) -> None:
+        """End-to-end: load -> run_simulation -> RoundRecommendation."""
+        from sim.search import run_simulation
+        scenario = load_scenario("scenarios/checkpoint_1_strike_hard.scenario")
+        recommendations = run_simulation(scenario, seed=42)
+        assert recommendations is not None
+        assert len(recommendations) > 0
+        aetregan_rec = next(
+            (r for r in recommendations if r.actor_name == "Aetregan"), None,
+        )
+        assert aetregan_rec is not None

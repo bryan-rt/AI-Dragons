@@ -1,5 +1,33 @@
 # Changelog
 
+## [CP5.1.3c] — 2026-04-25
+### Added
+- 14 action evaluators in `pf2e/actions.py`: END_TURN, RAISE_SHIELD, PLANT_BANNER,
+  STRIDE, STEP, STRIKE, TRIP, DISARM, DEMORALIZE, CREATE_A_DIVERSION, FEINT,
+  SHIELD_BLOCK, INTERCEPT_ATTACK, ACTIVATE_TACTIC
+- `evaluate_action()` dispatcher in `pf2e/actions.py`
+- `generate_candidates()` in `sim/candidates.py` for candidate action generation
+- `RoundRecommendation` dataclass and `format_recommendation()` in `sim/search.py`
+- `run_simulation()` convenience entry point in `sim/search.py`
+- `sim/cli.py` and `sim/__main__.py` — CLI entry point with `--scenario`,
+  `--seed`, `--debug-search` flags
+- `tests/test_evaluators.py` — 46 new evaluator + integration tests
+- `tests/test_cli.py` — CLI smoke tests
+- `map_count: int` and `conditions: frozenset[str]` fields on `CombatantSnapshot`
+- `conditions: frozenset[str]` field on `EnemySnapshot`
+- Action economy tracking (MAP + actions_remaining) in beam search loop
+- EV-collapse path now applies non-HP state changes (conditions, positions)
+
+### Rules verified
+- Feint failure: no immunity (AoN: https://2e.aonprd.com/Skills.aspx?ID=38)
+- Disarm crit failure: actor off-guard (AoN: https://2e.aonprd.com/Actions.aspx?ID=2300)
+- Flanking: off-guard in Remaster (AoN: https://2e.aonprd.com/Rules.aspx?ID=2361)
+- Ever Ready: passive feature, not an evaluator (AoN: https://2e.aonprd.com/Classes.aspx?ID=67)
+- Deceptive Tactics does NOT apply to Demoralize (AoN: https://2e.aonprd.com/Feats.aspx?ID=7794)
+
+### Regressions
+- Strike Hard EV 8.55 (8th consecutive verification)
+
 ## [5.1.3b] - CP5.1.3b: Algorithms
 
 Search engine, state threading, damage pipeline, initiative. The simulator
