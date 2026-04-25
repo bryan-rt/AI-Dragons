@@ -68,8 +68,8 @@ Tactic system.
 - `ActionResult` frozen dataclass with `expected_damage_dealt` property, `verify_probability_sum()` method
 - Pass 3c will add `_ACTION_EVALUATORS` dispatch table and `evaluate_action()` function
 
-### pf2e/damage_pipeline.py (will be added CP5.1 3b)
-Strict PF2e damage resolution. `resolve_strike()` as the main entry.
+### pf2e/damage_pipeline.py (added CP5.1.3b)
+Strict PF2e damage resolution. `resolve_strike_outcome()` as the main entry. Resolution order: Intercept Attack → Shield Block → Resistance → Temp HP → Real HP.
 
 ### sim/grid.py
 Pure grid geometry, no pf2e dependencies.
@@ -89,14 +89,30 @@ Character factories, weapon/armor constants, token-to-factory mapping.
 ### sim/scenario.py
 Scenario file loading, parsing, `Scenario` dataclass.
 
-### sim/round_state.py (will be added CP5.1 3b)
-`RoundState` with shallow-clone and hybrid branching semantics.
+### sim/round_state.py (added CP5.1.3b)
+- `CombatantSnapshot` (16 fields, frozen)
+- `EnemySnapshot` (14 fields, frozen)
+- `RoundState` with `from_scenario`, `with_pc_update`, `with_enemy_update`. Shallow-clone branching via `dataclasses.replace()` with shared `Character`.
 
-### sim/search.py (will be added CP5.1 3b)
-`SearchConfig`, `beam_search_turn`, `adversarial_enemy_turn`, `simulate_round`.
+### sim/search.py (added CP5.1.3b)
+- `SearchConfig`, `TurnPlan`, `ScoreBreakdown`
+- `beam_search_turn` K=50/20/10 depth 3
+- `adversarial_enemy_turn` K=20/10/5
+- `simulate_round`, `score_state`
 
-### sim/initiative.py (will be added CP5.1 3b)
-`roll_initiative()` — seeded Perception + d20 roll.
+### sim/initiative.py (added CP5.1.3b)
+`roll_initiative()` — seeded isolated RNG, partial override, enemy-beats-PC tiebreaker.
+
+## Planned Modules (not yet present)
+
+### sim/importers/pathbuilder.py (CP5.1.4 — Phase B)
+JSON parser producing `Character` objects from Pathbuilder export format. Called by `sim/party.py` factories once the importer lands. Scope-bounded: same `Character` out, just JSON in.
+
+### pf2e/effects/registry.py (Phase B+, post-CP9)
+Python registry mapping `effect_kind` strings to handler functions. Engine wiring only — no data rows reference specific handlers. Replaces today's hard-coded `has_X` boolean flags once the catalog ships.
+
+### tools/build_catalog.py (Phase B+, post-CP9)
+Build-time script that reads vendored Foundry VTT pf2e JSON compendium, transforms to our schema, and writes `pf2e/data/catalog.sqlite`. Not runtime code.
 
 ## Layering Violations to Watch For
 

@@ -59,6 +59,8 @@ Lores (trained):
 
 Languages: Common, Dwarven, Elven, Necril, Osarian, Petran.
 
+**JSON reconciliation status:** `characters/aetregan.json` was re-verified against `make_aetregan()` in the Phase B+ research thread (April 2026). The JSON Bryan pasted in that thread matches the canonical JSON in the repo; no discrepancies found. CP4.5 reconciliation remains valid. When CP5.1.4 (Pathbuilder importer) ships, the importer output must produce a bit-identical `Character` to today's `make_aetregan()`.
+
 **Planned progression:**
 - L2: Pick up Plant Banner feat (`has_plant_banner=True`, scenarios can use `planted=true`)
 
@@ -120,7 +122,7 @@ Skills (grounded defaults, trained):
 Lores (trained):
 - Bardic, Warfare
 
-**Role note:** Dalai is the party's support. Her Anthem buffs matter. CP5.1 scoring uses `role_multiplier=2` on her drop_cost because losing Anthem mid-round reduces party offensive output significantly.
+**Role note:** Dalai is the party's support. Her Anthem buffs matter. CP5.1 scoring uses `role_multiplier=2` on her drop_cost because losing Anthem mid-round reduces party offensive output significantly. This is hardcoded by name check today; CP6 will refactor to a derived `role_weight` property (see non-decisions in DECISIONS.md).
 
 ### Erisen (Inventor) — Squadmate
 Elf (with Nimble Elf heritage feat), Munitions Master.
@@ -160,6 +162,8 @@ No canonical enemies yet — encountered in scenarios as needed. The `checkpoint
 
 Future scenarios (CP9 Outlaws of Alkenstar) will have real stat blocks.
 
+**Forward note:** `EnemyState` and `CombatantState` are currently separate types (CP4 convenience). When a bestiary importer lands (Phase B-adjacent cleanup), they should unify so enemies can participate in auras, conditions, and adversarial sub-search identically to PCs. Flagged in DECISIONS.md non-decisions.
+
 ## Character Data Storage
 
 - `characters/aetregan.json` — Pathbuilder JSON export (authoritative for Aetregan)
@@ -167,4 +171,4 @@ Future scenarios (CP9 Outlaws of Alkenstar) will have real stat blocks.
 - `characters/dalai.json` — TBD; grounded defaults until reconciled
 - `characters/erisen.json` — TBD; grounded defaults until reconciled
 
-Code in `sim/party.py` is the source of truth for the simulator until Phase B imports land. At that point, `sim/party.py` becomes a fallback and `characters/*.json` is primary.
+Code in `sim/party.py` is the source of truth for the simulator until Phase B imports land in CP5.1.4. At that point, `sim/party.py` factory functions become thin wrappers around the Pathbuilder importer, and `characters/*.json` becomes primary.

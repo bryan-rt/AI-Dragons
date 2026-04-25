@@ -14,7 +14,7 @@ Your role is strategic pairing: architectural planning, three-pass brief design,
 - **pf2e/** package — pure PF2e Remaster rules engine (no game-specific logic)
 - **sim/** package — simulator layer built on top (grid, scenarios, search)
 
-**Longer-term vision:** The simulator becomes the engine for "Tactica: Alkenstar" — an Into-the-Breach-style puzzle game teaching PF2e tactics through handcrafted scenarios. Possible web app at Phase D. Possible effects catalog expansion at Phase B. Not committing to any of this yet; finish simulator first.
+**Longer-term vision:** The simulator becomes the engine for "Tactica: Alkenstar" — an Into-the-Breach-style puzzle game teaching PF2e tactics through handcrafted scenarios. The effects catalog work (Phase B+, sourced from the Foundry VTT pf2e system per D25) and web app work (Phase D) are planned but not yet active. Finish the simulator first.
 
 ## Repository
 
@@ -28,9 +28,9 @@ Your role is strategic pairing: architectural planning, three-pass brief design,
 
 Refer to `ROADMAP.md` in Project Knowledge for current status. At time of this Instructions being written:
 
-- **Completed:** CP0 through CP5.1.3a, plus CP4.6 (restructure) and CP4.7 (methodology hardening)
-- **Current:** CP5.1.3b (pending brief)
-- **Pending:** CP5.1.3c, CP5.2, CP5.3, CP6-CP9
+- **Completed:** CP0 through CP5.1.3b, plus CP4.6 (restructure) and CP4.7 (methodology hardening). Test count: 315.
+- **Current:** CP5.1.3c (Action Evaluators) — Pass 1 planning not yet started.
+- **Pending:** CP5.1.3c, CP5.1.4 (Phase B Pathbuilder importer — pulled forward per D28), CP5.2, CP5.3, CP6-CP9.
 
 Always consult `ROADMAP.md` at conversation start to confirm current state — Instructions may be stale.
 
@@ -53,13 +53,13 @@ Every one of these was caught in a brief-writing pass *before* code was written.
 
 ### 2. Test-first. Tests ratchet forward.
 
-Every checkpoint adds tests that lock in its correctness. The regression chain (EV 8.55 at every checkpoint since CP1, 55% prone probability, 5.95 mortar EV, HP targets) is the project's backbone. When a test breaks, investigate before editing the test's expected value — the code is usually wrong, not the test.
+Every checkpoint adds tests that lock in its correctness. The regression chain (EV 8.55 at every checkpoint since CP1 — verified 7 times through CP5.1.3b, 55% prone probability, 5.95 mortar EV, HP targets) is the project's backbone. When a test breaks, investigate before editing the test's expected value — the code is usually wrong, not the test.
 
 Every new function in a brief needs tests: happy path, edge cases, error cases. Every correction to a rule becomes a regression test so the error doesn't silently return.
 
 ### 3. Logging-backed. Complex algorithms need diagnostic output.
 
-When CP5.1.3b+ introduces search and state threading, eyeballing EVs won't scale. Briefs will specify logging (beam state per depth, pruned branches, scoring breakdowns) and CLI flags for diagnostic output. Don't skip this — the alternative is debugging by hypothesis, which burns cycles.
+CP5.1.3b+ introduced search and state threading; eyeballing EVs doesn't scale. Briefs specify logging (beam state per depth, pruned branches, scoring breakdowns) and CLI flags for diagnostic output. Don't skip this — the alternative is debugging by hypothesis, which burns cycles.
 
 Complex-algorithm briefs must specify what logging to emit. Simple rule-derivation briefs may skip this.
 
@@ -164,7 +164,7 @@ Bryan's party is in `characters/` directory:
 - **Aetregan** (commander, canonical from Pathbuilder JSON)
 - **Rook, Dalai, Erisen** (grounded defaults; Bryan may reconcile with real JSONs later)
 
-See `CHARACTERS.md` in Project Knowledge for details.
+See `CHARACTERS.md` in Project Knowledge for details. When CP5.1.4 (Phase B Pathbuilder importer) ships, `sim/party.py` factory functions will become thin wrappers reading these JSONs.
 
 ## Communication Style
 
@@ -186,7 +186,7 @@ See `CHARACTERS.md` in Project Knowledge for details.
 
 These numbers must hold through every checkpoint. Any deviation is a real bug:
 
-- **EV 8.55** — Rook longsword reaction Strike with Anthem vs Bandit1 AC 15 (Strike Hard tactic). Verified at CP1, CP2, CP3, CP4, CP4.5. Killer regression test at every future checkpoint.
+- **EV 8.55** — Rook longsword reaction Strike with Anthem vs Bandit1 AC 15 (Strike Hard tactic). Verified 7 times through CP5.1.3b. Killer regression test at every future checkpoint.
 - **55% prone probability** — Tactical Takedown vs Reflex +5, DC 17 (11/20 on d20 enumeration).
 - **EV 5.95 per target** — Light mortar 2d6 DC 17 vs Reflex +5 (corrected from brief's original 5.60).
 - **Aetregan Will +6** — Wis 12, expert +5.
@@ -199,7 +199,7 @@ These numbers must hold through every checkpoint. Any deviation is a real bug:
 Upload these Knowledge files contain details that don't belong in Instructions:
 - `ROADMAP.md` — Full checkpoint history and status
 - `ARCHITECTURE.md` — Module layout and layering rules
-- `DECISIONS.md` — Decision log with rationale for every major architectural choice
+- `DECISIONS.md` — Decision log with rationale for every major architectural choice (D1-D28 at last update)
 - `CHARACTERS.md` — Party composition and character data canonicity
 - `RULES_CITATIONS.md` — Verified AoN references by topic
 
