@@ -581,12 +581,17 @@ def format_recommendation(rec: RoundRecommendation) -> str:
     return "\n".join(lines)
 
 
-def _action_label(action: Action) -> str:
-    """Human-readable label for an Action."""
+def _action_label(action: Action, state: RoundState | None = None) -> str:
+    """Human-readable label for an Action.
+
+    If state is provided, ACTIVATE_TACTIC labels are enriched with
+    the responding squadmate and action (e.g., "Rook Strikes Bandit1").
+    """
     if action.type == ActionType.END_TURN:
         return "End Turn"
     if action.type == ActionType.STRIKE:
-        return f"Strike {action.target_name} ({action.weapon_name})"
+        weapon = f" ({action.weapon_name})" if action.weapon_name else ""
+        return f"Strike {action.target_name}{weapon}"
     if action.type in (ActionType.TRIP, ActionType.DISARM):
         return f"{action.type.name.title()} {action.target_name}"
     if action.type in (ActionType.DEMORALIZE, ActionType.FEINT):
@@ -598,13 +603,49 @@ def _action_label(action: Action) -> str:
     if action.type == ActionType.RAISE_SHIELD:
         return "Raise Shield"
     if action.type == ActionType.ACTIVATE_TACTIC:
+        detail = _tactic_detail(action, state)
+        if detail:
+            return f"Activate {action.tactic_name} ({detail})"
         return f"Activate {action.tactic_name}"
     return action.type.name
 
 
-def _turn_plan_to_recommendation(plan: TurnPlan) -> RoundRecommendation:
-    """Convert a TurnPlan into a human-readable RoundRecommendation."""
-    action_labels = [_action_label(a) for a in plan.actions]
+def _tactic_detail(action: Action, state: RoundState | None) -> str:
+    """Extract who responds and how from a tactic evaluation."""
+    if state is None:
+        return ""
+    try:
+        from pf2e.actions import evaluate_activate_tactic
+        result = evaluate_activate_tactic(action, state)
+        if not result.eligible or not result.outcomes:
+            return ""
+        desc = result.outcomes[0].description
+        # The justification from evaluate_tactic has the detail we need.
+        # Parse the key info: "Strike Hard! -> Rook Longsword reaction Strike
+        # at +7 (MAP 0) vs Bandit1 AC 15, EV 8.55"
+        if "\u2192" in desc:
+            # After the arrow is the detail
+            detail = desc.split("\u2192", 1)[1].strip()
+            # Shorten: take up to "EV" or first comma
+            if ", EV" in detail:
+                detail = detail[:detail.index(", EV")]
+            return detail
+        return ""
+    except Exception:
+        return ""
+
+
+def _turn_plan_to_recommendation(
+    plan: TurnPlan, pre_turn_state: RoundState | None = None,
+) -> RoundRecommendation:
+    """Convert a TurnPlan into a human-readable RoundRecommendation.
+
+    pre_turn_state is the state BEFORE this actor's turn began — needed
+    to re-evaluate ACTIVATE_TACTIC for the detail label (who responds).
+    """
+    state_for_labels = pre_turn_state if pre_turn_state is not None else plan.resulting_state
+    action_labels = [_action_label(a, state_for_labels) for a in plan.actions]
+
     breakdown = plan.score_breakdown
     reasoning = (
         f"EV breakdown: damage_dealt={breakdown.damage_dealt:.1f}, "
@@ -662,4 +703,14 @@ def run_simulation(
         init_state, config, candidate_actions, evaluate_action_fn,
     )
 
-    return [_turn_plan_to_recommendation(p) for p in plans]
+    # Reconstruct pre-turn states for tactic label enrichment
+    pre_turn_states: list[RoundState] = []
+    current = init_state
+    for plan in plans:
+        pre_turn_states.append(current)
+        current = plan.resulting_state
+
+    return [
+        _turn_plan_to_recommendation(p, pre)
+        for p, pre in zip(plans, pre_turn_states)
+    ]
