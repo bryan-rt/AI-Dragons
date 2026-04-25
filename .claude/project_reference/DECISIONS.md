@@ -262,6 +262,22 @@ Major architectural decisions with rationale. Append as new decisions are made.
 
 **Decided:** Phase B+ research thread (April 2026).
 
+## D21: Anthem modeled as Option B (action with ripple EV)
+
+**Decision:** Dalai spends 1 action to cast/maintain Courageous Anthem. The
+evaluator scores the full-round ripple effect: +1 attack and +1 damage across
+all expected ally strikes remaining in the round.
+
+**Rationale:** Option A (round-start multiplier) is simpler but loses the
+action-economy tradeoff signal — the simulator should know that casting Anthem
+costs Dalai an action and weigh that against her other options. Option B
+preserves this tradeoff.
+
+**Simplification:** Remaining ally strikes estimated as `floor(actions_remaining / 1)`
+capped at 2. CP6 calibration target.
+
+**Decided:** CP5.1.3c bugfix session, pre-CP5.2.
+
 ## Non-Decisions (deferred)
 
 These came up but haven't been resolved. Revisit when relevant:

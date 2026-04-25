@@ -266,7 +266,13 @@ def _add_tactic_candidates(
     actor: CombatantSnapshot, state: RoundState,
     actor_name: str, actions: list[Action],
 ) -> None:
-    """Add ACTIVATE_TACTIC actions for each affordable prepared tactic."""
+    """Add ACTIVATE_TACTIC actions for each affordable prepared tactic.
+
+    Only Commanders can activate tactics. Gated on has_commander_banner
+    (proxy for Commander class — only Aetregan has this set).
+    """
+    if not actor.character.has_commander_banner:
+        return
     for key in PREPARED_TACTICS:
         defn = FOLIO_TACTICS[key]
         if actor.actions_remaining >= defn.action_cost:

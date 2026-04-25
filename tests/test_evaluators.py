@@ -545,6 +545,15 @@ class TestActivateTactic:
         result = evaluate_activate_tactic(action, state)
         assert not result.eligible
 
+    def test_activate_tactic_ineligible_for_non_commander(self) -> None:
+        """Dalai and Erisen must never generate ACTIVATE_TACTIC candidates."""
+        from sim.candidates import generate_candidates
+        state = _quick_state()
+        for name in ("Dalai Alpaca", "Erisen", "Rook"):
+            candidates = generate_candidates(state, name)
+            tactic_actions = [a for a in candidates if a.type == ActionType.ACTIVATE_TACTIC]
+            assert tactic_actions == [], f"{name} should not have ACTIVATE_TACTIC candidates"
+
     def test_activate_tactic_no_eligible_squadmates(self) -> None:
         """When no squadmates are in aura, tactic should be ineligible."""
         # Move all squadmates far away from banner aura

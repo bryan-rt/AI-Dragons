@@ -72,6 +72,9 @@ class Character:
     has_plant_banner: bool = False
     has_deceptive_tactics: bool = False
     has_lengthy_diversion: bool = False
+    # Commander class feature: can carry/plant a war banner and activate tactics.
+    # (AoN: https://2e.aonprd.com/Classes.aspx?ID=66)
+    has_commander_banner: bool = False
 
 
 @dataclass

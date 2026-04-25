@@ -225,6 +225,7 @@ def make_aetregan() -> Character:
         has_plant_banner=False,
         has_deceptive_tactics=True,
         has_lengthy_diversion=True,
+        has_commander_banner=True,
     )
 
 
