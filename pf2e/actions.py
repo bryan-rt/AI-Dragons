@@ -591,8 +591,11 @@ def _evaluate_pc_strike(
     if not outcomes:
         outcomes.append(ActionOutcome(probability=1.0))
 
-    # Striking clears Hidden (AoN: Hidden condition — any action except Hide/Sneak/Step)
+    # Striking clears Hidden (AoN: Hidden condition — any action except Hide/Sneak/Step).
+    # Subtract defensive value of Hidden being lost — beam search weighs whether
+    # this Strike is worth giving up the flat check defense.
     if "hidden" in actor.conditions:
+        hidden_penalty = _hidden_defensive_value(state)
         outcomes = [
             ActionOutcome(
                 probability=o.probability,
@@ -601,6 +604,7 @@ def _evaluate_pc_strike(
                 conditions_applied=o.conditions_applied,
                 conditions_removed={**o.conditions_removed, action.actor_name: ("hidden",)},
                 reactions_consumed=o.reactions_consumed,
+                score_delta=o.score_delta - hidden_penalty,
                 description=o.description,
             )
             for o in outcomes
@@ -1703,6 +1707,37 @@ def evaluate_recall_knowledge(
 # CP5.3: HIDE
 # ---------------------------------------------------------------------------
 
+def _hidden_defensive_value(state: RoundState) -> float:
+    """Compute the defensive EV of being Hidden for one character.
+
+    Hidden imposes a DC 11 flat check (~45% miss) on enemy attacks.
+    Value = (attacks targeting this PC) × 0.45 × avg damage per attack.
+    Approximation: enemies spread attacks evenly across living PCs.
+    """
+    living_enemies = [e for e in state.enemies.values() if e.current_hp > 0]
+    if not living_enemies:
+        return 0.0
+    living_pcs = sum(1 for pc in state.pcs.values() if pc.current_hp > 0)
+    if living_pcs <= 0:
+        return 0.0
+
+    total_attacks = sum(e.num_attacks_per_turn for e in living_enemies)
+    attacks_on_me = total_attacks / living_pcs
+
+    avg_dmg_per_attack = 0.0
+    for e in living_enemies:
+        if e.damage_dice and "d" in e.damage_dice:
+            parts = e.damage_dice.split("d", 1)
+            avg_dmg_per_attack += (
+                int(parts[0]) * die_average(f"d{parts[1]}") + e.damage_bonus
+            )
+        elif e.damage_bonus:
+            avg_dmg_per_attack += e.damage_bonus
+    avg_dmg_per_attack /= max(1, len(living_enemies))
+
+    return attacks_on_me * 0.45 * avg_dmg_per_attack
+
+
 def evaluate_hide(
     action: Action, state: RoundState, spatial: SpatialQueries | None = None,
 ) -> ActionResult:
@@ -1767,15 +1802,7 @@ def evaluate_hide(
         avg_dmg = damage_avg(actor, actor.character.equipped_weapons[0])  # type: ignore[arg-type]
 
     off_guard_ev = attack_roll_actions * 0.10 * avg_dmg
-    # DC 11 flat check: ~45% chance enemies miss
-    incoming_attacks = sum(e.num_attacks_per_turn for e in living_enemies)
-    avg_incoming = sum(
-        (die_average(f"d{e.damage_dice.split('d')[1]}" if 'd' in e.damage_dice else "d4")
-         * int(e.damage_dice.split('d')[0] if 'd' in e.damage_dice else "1")
-         + e.damage_bonus) if e.damage_dice else 0
-        for e in living_enemies
-    ) / max(1, len(living_enemies))
-    flat_check_ev = incoming_attacks * 0.45 * avg_incoming
+    flat_check_ev = _hidden_defensive_value(state)
 
     hide_ev = p_success * (off_guard_ev + flat_check_ev)
 
@@ -2012,9 +2039,12 @@ def evaluate_spell(
         return ActionResult(action=action, eligible=False,
                             ineligibility_reason=f"Unimplemented: {defn.pattern}")
 
-    # Casting a hostile spell breaks Hidden condition
+    # Casting a hostile spell breaks Hidden condition.
+    # Subtract the defensive value being lost — the beam search must weigh
+    # whether this spell is worth giving up the Hidden flat check defense.
     # (AoN: Hidden — "you become observed" after a hostile action)
     if result.eligible and "hidden" in actor.conditions:
+        hidden_penalty = _hidden_defensive_value(state)
         result = ActionResult(
             action=result.action,
             outcomes=tuple(
@@ -2028,7 +2058,7 @@ def evaluate_spell(
                         action.actor_name: ("hidden",),
                     },
                     reactions_consumed=o.reactions_consumed,
-                    score_delta=o.score_delta,
+                    score_delta=o.score_delta - hidden_penalty,
                     description=o.description,
                 )
                 for o in result.outcomes
