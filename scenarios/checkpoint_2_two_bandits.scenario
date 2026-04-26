@@ -23,7 +23,7 @@ description = Two bandits approach from opposite sides. Bandit2 is armored with 
 planted = false
 
 [anthem]
-active = true
+active = false
 
 [enemies]
 m1 name=Bandit1 ac=15 ref=5 fort=3 will=2 atk=7 dmg=1d8 dmg_bonus=3 attacks=2 max_hp=20 perception=4

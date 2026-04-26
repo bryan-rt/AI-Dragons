@@ -383,12 +383,26 @@ def evaluate_raise_shield(
         return ActionResult(action=action, eligible=False,
                            ineligibility_reason="Shield already raised")
 
+    # Threat-estimated danger: all living enemies within one Stride (30 ft)
+    # can potentially target this actor. +2 AC ≈ 10% hit reduction.
+    danger = 0.0
+    for enemy in state.enemies.values():
+        if enemy.current_hp <= 0 or not enemy.damage_dice:
+            continue
+        # Count all living PCs as potentially threatened (conservative)
+        num_threatened = max(1, sum(1 for p in state.pcs.values() if p.current_hp > 0))
+        p_targets_actor = 1.0 / num_threatened
+        dmg = expected_enemy_turn_damage(enemy, actor)  # type: ignore[arg-type]
+        danger += dmg * p_targets_actor
+    shield_ev = danger * 0.10  # +2 AC ≈ 10% hit reduction
+
     return ActionResult(
         action=action,
         outcomes=(ActionOutcome(
             probability=1.0,
             conditions_applied={action.actor_name: ("shield_raised",)},
-            description="Raise Shield (+2 AC)",
+            score_delta=shield_ev,
+            description=f"Raise Shield (+2 AC, EV {shield_ev:.2f})",
         ),),
     )
 
@@ -816,17 +830,28 @@ def evaluate_demoralize(
     failure = outcomes_d20.failure / 20
     crit_f = outcomes_d20.critical_failure / 20
 
+    # Frightened EV: -N to all enemy rolls × remaining attacks × avg_damage × 0.05
+    if target.damage_dice and "d" in target.damage_dice:
+        parts = target.damage_dice.split("d", 1)
+        avg_enemy_dmg = int(parts[0]) * die_average(f"d{parts[1]}") + target.damage_bonus
+    else:
+        avg_enemy_dmg = float(target.damage_bonus)
+    frightened_1_ev = target.num_attacks_per_turn * avg_enemy_dmg * 0.05  # -1 to rolls
+    frightened_2_ev = frightened_1_ev * 2  # -2 to rolls
+
     outcomes: list[ActionOutcome] = []
     if crit_s > 0:
         outcomes.append(ActionOutcome(
             probability=crit_s,
             conditions_applied={action.target_name: ("frightened_2",)},
+            score_delta=frightened_2_ev,
             description=f"Crit success: {action.target_name} Frightened 2",
         ))
     if success > 0:
         outcomes.append(ActionOutcome(
             probability=success,
             conditions_applied={action.target_name: ("frightened_1",)},
+            score_delta=frightened_1_ev,
             description=f"Success: {action.target_name} Frightened 1",
         ))
     if failure > 0:
@@ -842,6 +867,7 @@ def evaluate_demoralize(
                 action.target_name: ("demoralize_immune",),
                 action.actor_name: ("frightened_1",),
             },
+            score_delta=-frightened_1_ev,  # actor gets frightened = negative
             description=f"Crit failure: immune + {action.actor_name} Frightened 1",
         ))
     if not outcomes:
@@ -893,11 +919,16 @@ def evaluate_create_a_diversion(
     success_prob = success_faces / 20
     failure_prob = failure_faces / 20
 
+    # Off-guard EV: +2 to ally attacks ≈ 10% more hits × avg ally damage
+    # Estimate 2 remaining ally strikes this round
+    off_guard_ev = 2 * 0.10 * 5.0  # rough avg ally damage
+
     outcomes: list[ActionOutcome] = []
     if success_prob > 0:
         outcomes.append(ActionOutcome(
             probability=success_prob,
             conditions_applied={action.target_name: ("off_guard",)},
+            score_delta=off_guard_ev,
             description=f"Success: {action.target_name} off-guard vs {action.actor_name}",
         ))
     if failure_prob > 0:
@@ -958,17 +989,22 @@ def evaluate_feint(
     failure = outcomes_d20.failure / 20
     crit_f = outcomes_d20.critical_failure / 20
 
+    # Off-guard EV for Feint: benefits the actor's next Strike
+    feint_ev = 0.10 * 5.0  # +2 attack ≈ 10% more hits × rough avg damage
+
     outcomes: list[ActionOutcome] = []
     if crit_s > 0:
         outcomes.append(ActionOutcome(
             probability=crit_s,
             conditions_applied={action.target_name: ("off_guard",)},
+            score_delta=feint_ev * 2,  # crit: lasts longer
             description=f"Crit success: {action.target_name} off-guard until next turn",
         ))
     if success > 0:
         outcomes.append(ActionOutcome(
             probability=success,
             conditions_applied={action.target_name: ("off_guard",)},
+            score_delta=feint_ev,
             description=f"Success: {action.target_name} off-guard vs next attack",
         ))
     if failure > 0:
@@ -980,6 +1016,7 @@ def evaluate_feint(
         outcomes.append(ActionOutcome(
             probability=crit_f,
             conditions_applied={action.actor_name: ("off_guard",)},
+            score_delta=-feint_ev,  # actor gets off-guard = negative
             description=f"Crit failure: {action.actor_name} off-guard vs target",
         ))
     if not outcomes:
@@ -1482,7 +1519,8 @@ def evaluate_taunt(
                            ineligibility_reason="Target beyond 30 ft")
 
     # Score: EV of -1 circumstance + off-guard when enemy targets allies
-    num_pcs = max(1, _count_pcs_in_enemy_reach(target, state))
+    # Use all living PCs as potentially threatened (not just adjacent)
+    num_pcs = max(1, sum(1 for p in state.pcs.values() if p.current_hp > 0))
     p_targets_ally = 1.0 - (1.0 / num_pcs)
     remaining_attacks = target.num_attacks_per_turn
 
@@ -1552,23 +1590,28 @@ def evaluate_recall_knowledge(
     rk_bonus = skill_bonus(actor.character, Skill.SOCIETY)
     p_success = _d20_success_probability(rk_bonus, RECALL_KNOWLEDGE_DC)
 
-    # Score = EV gain from W/R insight on remaining strikes
-    remaining = min(actor.actions_remaining - 1, 2)
+    # Score = EV gain from W/R insight on remaining PARTY strikes (not just actor).
+    # The information benefits any party member who attacks this enemy.
     if not target.weaknesses and not target.resistances:
         recall_ev = 0.0
     else:
-        # Compute naive vs informed damage per strike
-        if actor.character.equipped_weapons:
-            eq = actor.character.equipped_weapons[0]
-            base_dmg = damage_avg(actor, eq)  # type: ignore[arg-type]
-            dmg_type = eq.weapon.damage_type.name.lower()
-            w_bonus = target.weaknesses.get(dmg_type, 0)
-            r_penalty = target.resistances.get(dmg_type, 0)
-            informed_dmg = max(0.0, base_dmg + w_bonus - r_penalty)
-            ev_gain = informed_dmg - base_dmg
-        else:
-            ev_gain = 0.0
-        recall_ev = p_success * ev_gain * remaining
+        # Find the best damage-type advantage across the whole party
+        best_advantage = 0.0
+        total_party_strikes = 0
+        for pc_name, pc_snap in state.pcs.items():
+            if pc_snap.current_hp <= 0:
+                continue
+            remaining = min(pc_snap.actions_remaining, 2)
+            total_party_strikes += remaining
+            for eq in pc_snap.character.equipped_weapons:
+                dmg_type = eq.weapon.damage_type.name.lower()
+                advantage = target.weaknesses.get(dmg_type, 0) - target.resistances.get(dmg_type, 0)
+                best_advantage = max(best_advantage, advantage)
+        # Also check mortar (bludgeoning) if any PC has light mortar
+        mortar_advantage = target.weaknesses.get("bludgeoning", 0) - target.resistances.get("bludgeoning", 0)
+        best_advantage = max(best_advantage, mortar_advantage)
+
+        recall_ev = p_success * best_advantage * max(1, total_party_strikes // 2)
 
     return ActionResult(
         action=action,
