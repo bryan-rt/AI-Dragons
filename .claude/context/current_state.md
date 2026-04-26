@@ -1,49 +1,44 @@
 # Current State
 
-**Last updated:** Phase B+.1 complete.
+**Last updated:** Phase B+.2 complete.
 
 ## Latest Test Count
 
-**512 passing.**
+**519 passing.**
 
 ## Active Work
 
-**Phase B+.1 — Session Cache Infrastructure and Analysis** (complete).
+**Phase B+.2 — Handler Registry Design (Analysis Checkpoint)** (complete).
 
 ### Completed
-- Session-scoped SQLite cache for Rule Element data
-- GitHub fetcher (v14-dev branch, flat-path packs only)
-- Two-phase session initializer (local extraction + GitHub supplement)
-- Rule Element analysis report generator
-- CLI integration (--init-session, --characters, --cache flags)
-- 34 new tests (all network mocked, temp paths for cache)
-- EV 7.65 (14th verification — no engine changes)
+- Full Rule Element content inspection (all 26 combat-kind REs examined)
+- Classification: 17 handled, 6 non-combat, 3 genuinely unmodeled (non-blocking)
+- Unmodeled effects warning added to session init
+- D29 revised (handler priority from content, not counts)
+- D30 added (registry deferred)
+- `pf2e/effects/__init__.py` placeholder created
+- Extended analysis report with detailed classification
+- EV 7.65 (15th verification)
 
-### Analysis Findings
-- 115 unique items cached from 4 characters
-- 36 items have Rule Elements (92 total REs, 15 distinct kinds)
-- 28.3% combat-relevant (26 REs), 71.7% creation-time/utility (66 REs)
-- Top combat kinds: ActiveEffectLike (12), AdjustModifier (4), FlatModifier (4)
+### Key Finding
+Zero new handlers needed for current party at L1. The handler registry
+is deferred until CP8 (Level Advancement) or enemy fear system.
 
 ## Known Regression Anchors
 
-- **EV 7.65** — Strike Hard (Rook Earthbreaker). 14th verification.
+- **EV 7.65** — Strike Hard (Rook Earthbreaker). 15th verification.
 
-## Handler Priority (D29)
+## Handler Triggers (D30)
 
-| Priority | Kind | Count | Cumulative |
-|---|---|---|---|
-| 1 | ActiveEffectLike | 12 | 46% |
-| 2 | AdjustModifier | 4 | 62% |
-| 3 | FlatModifier | 4 | 77% |
-| 4 | Strike | 3 | 88% |
-| 5 | SubstituteRoll | 1 | 92% |
-| 6 | Aura | 1 | 96% |
-| 7 | Resistance | 1 | 100% |
+| Trigger | Handler Needed | When |
+|---|---|---|
+| Enemy fear effects | Commander's Banner +1 vs fear (FlatModifier) | Enemy spellcasting |
+| Skill automation | Assurance (SubstituteRoll) | Skill action expansion |
+| Level advancement | Class DC scaling (ActiveEffectLike) | CP8 |
 
 ## Next Checkpoint
 
-Phase B+.2 — Handler registry design (based on analysis report)
+CP8 — Level advancement (L2-L5), feat progression
 
 ## Links
 

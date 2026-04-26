@@ -175,3 +175,70 @@ Based on combat-relevant Rule Element frequency:
 | 5 | SubstituteRoll | 1 | 92% |
 | 6 | Aura | 1 | 96% |
 | 7 | Resistance | 1 | 100% |
+
+## Detailed Classification (B+.2 Follow-Up)
+
+Generated from full Rule Element content inspection (not just kind counts).
+Each of the 26 combat-kind Rule Elements was examined individually.
+
+### Already Handled (17 Rule Elements)
+
+These are fully covered by existing importer or engine logic:
+
+- **Nimble Elf** FlatModifier (land-speed +5) → `_derive_speed()` in foundry.py
+- **Guardian's Armor** Resistance (physical, 1+level/2) → `guardians_armor_resistance()` in combat_math.py
+- **Commander's Banner** Aura (30 ft, allies) → banner aura in tactics system
+- **Conservator** ActiveEffectLike (skill rank upgrade) → `_extract_skills()` reads final system.skills
+- **Inventor Dedication** ActiveEffectLike (Crafting rank upgrade) → `_extract_skills()`
+- **Wizard Dedication** ActiveEffectLike (Arcana rank upgrade) → `_extract_skills()`
+
+### Safe to Skip — Non-Combat (6 Rule Elements)
+
+These have no combat relevance:
+
+- **Arcane Eye** ActiveEffectLike ×2 → Foundry automaton enhancement flags (UI/build scaffolding)
+- **Armor Innovation** ActiveEffectLike → Internal innovation ID linking (Foundry wiring)
+- **Automaton** ActiveEffectLike → Empty enhancement list initialization (build scaffolding)
+- **Hefty Hauler** ActiveEffectLike ×2 → Inventory carry capacity (+2 bulk threshold)
+- **Inventor** ActiveEffectLike → Explode damage type flag (Foundry internal, "fire")
+- **Inventor Dedication** ActiveEffectLike → Duplicate explode flag
+- **Compass** AdjustModifier → Suppresses navigation penalty on Survival (non-combat)
+- **Torch** FlatModifier + Strike ×2 → Improvised weapon (d4 bludgeoning, never optimal)
+- **Commander's Banner Glorious** AdjustModifier + FlatModifier → Requires Glorious Banner feat not in party
+
+### Genuinely Unmodeled, Combat-Relevant (3 Rule Elements)
+
+Non-blocking — no combat impact at L1 with current party:
+
+1. **Assurance (Thievery)**: SubstituteRoll — replaces d20 with flat 10+proficiency
+   on Thievery checks. No combat impact at L1 (no Thievery evaluator).
+   Handler needed when Thievery appears in evaluators.
+
+2. **Commander's Banner fear bonus**: FlatModifier — +1 status bonus to AC and
+   saves vs effects with the fear trait. No combat impact until enemies use
+   Demoralize or Fear spells. Handler priority 1 when enemy fear is modeled.
+
+3. **Light Mortar Innovation class DC**: ActiveEffectLike — upgrades Inventor
+   class DC rank at L7/L15. Not relevant until CP8 (Level Advancement).
+
+### Not Worth Modeling
+
+- **Subterfuge Suit** AdjustModifier: Downgrades AC proficiency to 0 UNLESS
+  character has Armor Innovation. Aetregan HAS Armor Innovation, so predicate
+  is FALSE — downgrade does not apply. AC is correct as-is.
+- **Warrior Automaton** Strike: Grants fist (d4 bludgeoning unarmed). Rook has
+  Earthbreaker (d6). Never optimal. No handler needed.
+
+### D29 Revised — Handler Priority Based on Content
+
+| Priority | Effect | When Needed | Trigger |
+|---|---|---|---|
+| 1 | Commander's Banner +1 vs fear | Enemy fear effects | Enemy spellcasting system |
+| 2 | Assurance (skill substitute) | Skill check automation | Skill action expansion |
+| 3 | Class DC progression L7+ | Level advancement | CP8 |
+| 4 | Warrior Automaton fist | Never | Rook has better weapons |
+
+### D30 — Handler Registry Deferred
+
+No handlers needed at L1 for current party. Handler registry (`pf2e/effects/registry.py`)
+will be built when the first handler is actually required.

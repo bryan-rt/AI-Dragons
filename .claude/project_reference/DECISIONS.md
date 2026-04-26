@@ -278,6 +278,42 @@ capped at 2. CP6 calibration target.
 
 **Decided:** CP5.1.3c bugfix session, pre-CP5.2.
 
+## D29: Handler priority based on Rule Element content inspection (revised)
+
+**Decision:** The original handler priority (from B+.1 kind counts) is replaced
+by a content-inspected priority based on what's genuinely unmodeled:
+
+| Priority | Effect | Trigger |
+|---|---|---|
+| 1 | Commander's Banner +1 vs fear | Enemy fear effects modeled |
+| 2 | Assurance (skill substitute) | Skill action expansion |
+| 3 | Class DC progression L7+ | CP8 level advancement |
+| 4 | Warrior Automaton fist | Never (Rook has better weapons) |
+
+**Rationale:** The original D29 (from B+.1) ranked handlers by kind frequency
+(ActiveEffectLike first at 12 instances). Content inspection in B+.2 Pass 1
+revealed all 12 ActiveEffectLike instances are creation-time or internal flags
+already captured by the importer. The revised priority reflects genuinely
+unmodeled combat-relevant effects.
+
+**Decided:** Phase B+.2.
+
+## D30: Handler registry deferred until first handler needed
+
+**Decision:** Do not build `pf2e/effects/registry.py` until the first handler
+is actually required. The module path is reserved (`pf2e/effects/__init__.py`)
+but no registry, dispatcher, or handler code is written.
+
+**Rationale:** All 26 combat-kind Rule Elements in the current party at L1 are
+either already handled by hardcoded importer/engine logic (17), non-combat (6),
+or genuinely unmodeled but with no current impact (3). Building a registry for
+zero handlers is over-engineering. The trigger points are:
+- CP8 (Level Advancement): Light Mortar class DC scaling
+- Enemy spell/fear system: Commander's Banner fear bonus
+- Skill automation expansion: Assurance SubstituteRoll
+
+**Decided:** Phase B+.2.
+
 ## Non-Decisions (deferred)
 
 These came up but haven't been resolved. Revisit when relevant:

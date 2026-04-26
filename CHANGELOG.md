@@ -1,5 +1,23 @@
 # Changelog
 
+## [Phase B+.2] — 2026-04-26
+### Added
+- `pf2e/effects/__init__.py` — placeholder for future handler registry
+- Unmodeled effects warning in session init (`_check_unmodeled_effects()`)
+- D29 revised: handler priority based on content inspection, not kind counts
+- D30: handler registry deferred until first handler needed
+
+### Analysis
+- All 26 combat-kind Rule Elements classified by content inspection:
+  - 17 already handled by importer/engine
+  - 6 non-combat (safe to skip)
+  - 3 genuinely unmodeled but non-blocking at L1
+- Only Assurance (SubstituteRoll) flagged in unmodeled effects warning
+- Extended `tools/re_analysis_report.md` with detailed classification
+
+### Regressions
+- EV 7.65 (15th verification — no engine changes)
+
 ## [Phase B+.1] — 2026-04-26
 ### Added
 - `sim/catalog/session_cache.py` — session-scoped SQLite cache for Rule Elements

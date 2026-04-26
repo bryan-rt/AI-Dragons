@@ -109,6 +109,10 @@ def initialize_session(
             print(f"Fetched {fetched}/{len(unfetched)} bestiary entries"
                   + (f" ({len(not_found)} not found)" if not_found else ""))
 
+    # Phase 3: Check for unmodeled Rule Elements (informational only)
+    if verbose:
+        _check_unmodeled_effects(character_paths, verbose=True)
+
     if verbose:
         print(f"Session cache ready: {cache._path}")
 
@@ -184,3 +188,90 @@ def _extract_enemy_slugs_from_scenario(scenario_path: str) -> list[str]:
                 slugs.append(slug)
                 break
     return slugs
+
+
+# ---------------------------------------------------------------------------
+# Unmodeled effects check (B+.2)
+# ---------------------------------------------------------------------------
+
+# Rule Element kinds already handled by the importer or engine, or verified
+# as non-combat / creation-time only. Each entry has a comment explaining WHY
+# it's safe to skip.
+_HANDLED_KINDS: set[str] = {
+    # Combat-relevant, explicitly handled in engine:
+    "Resistance",       # guardians_armor_resistance() in combat_math.py
+    "Aura",             # Commander's Banner aura modeled in tactics system
+    "FlatModifier",     # Nimble Elf → _derive_speed() adds +5;
+                        # Commander's Banner fear bonus → enemies don't use fear yet;
+                        # Torch fire +1 → improvised weapon, not combat-relevant
+    # Creation-time stat mutations already captured by the importer:
+    "ActiveEffectLike", # All 12 instances verified (B+.2 Pass 1):
+                        #   - Skill rank upgrades (Crafting, Arcana) → _extract_skills()
+                        #   - Foundry internal flags (innovationId, explode type, enhancements)
+                        #   - Inventory capacity (Hefty Hauler) → non-combat
+                        #   - Light Mortar class DC scaling → not relevant until L7 (CP8)
+    "AdjustModifier",   # All 4 instances verified (B+.2 Pass 1):
+                        #   - Subterfuge Suit AC downgrade → predicate FALSE for Aetregan
+                        #     (has Armor Innovation feature, so downgrade does not apply)
+                        #   - Compass → suppresses navigation penalty, non-combat
+                        #   - Commander's Banner Glorious → requires Glorious Banner feat
+                        #     not present in party
+                        #   - Assurance suppress-modifiers → paired with SubstituteRoll
+    "Strike",           # Torch (improvised weapon, never optimal) and
+                        # Warrior Automaton fist (d4 unarmed, Rook has Earthbreaker d6)
+    # Creation-time / UI only — no combat impact:
+    "GrantItem",        # Grants other items during character build
+    "ChoiceSet",        # Presents build choices during character creation
+    "Note",             # UI annotation text (tooltips, reminders)
+    "RollOption",       # Sets predicate flags for conditional Rule Elements
+    "TokenLight",       # Visual token lighting effects
+    "TokenEffectIcon",  # Visual token effect icons
+    "ItemAlteration",   # Modifies item properties at creation time
+    "CreatureSize",     # Sets creature size category (already derived from ancestry)
+}
+
+# Rule Elements that are genuinely unmodeled but documented as non-blocking.
+# Maps kind → human-readable explanation for the warning message.
+_UNMODELED_BUT_KNOWN: dict[str, str] = {
+    "SubstituteRoll": "Assurance — replaces d20 with 10+prof (no combat impact at L1)",
+}
+
+
+def _check_unmodeled_effects(
+    character_paths: list[str],
+    verbose: bool = True,
+) -> list[tuple[str, str, str]]:
+    """Scan character items for unmodeled Rule Elements. Informational only.
+
+    Returns list of (character_name, item_name, description) tuples for
+    any Rule Elements whose kind is not in _HANDLED_KINDS.
+    Never raises, never blocks session init (Option B: core-complete).
+    """
+    results: list[tuple[str, str, str]] = []
+
+    for char_path in character_paths:
+        try:
+            data = json.loads(Path(char_path).read_text(encoding="utf-8"))
+        except (FileNotFoundError, IOError, json.JSONDecodeError):
+            continue
+
+        char_name = data.get("name", Path(char_path).stem)
+        unmodeled: list[str] = []
+
+        for item in data.get("items", []):
+            item_name = item.get("name", "?")
+            for rule in item.get("system", {}).get("rules", []):
+                kind = rule.get("key", "")
+                if not kind or kind in _HANDLED_KINDS:
+                    continue
+                note = _UNMODELED_BUT_KNOWN.get(kind, "no handler")
+                unmodeled.append(f"  - {item_name}: {kind} ({note})")
+                results.append((char_name, item_name, f"{kind} ({note})"))
+
+        if unmodeled and verbose:
+            print(f"[INFO] {char_name}: {len(unmodeled)} unmodeled Rule Element(s) "
+                  f"(non-blocking):")
+            for line in unmodeled:
+                print(line)
+
+    return results
