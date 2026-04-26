@@ -118,14 +118,22 @@ def _compute_cumulative_score(
     max_rounds: int = 10,
 ) -> float:
     """Cumulative score with round bonus and survival bonus.
-    Weights are CP7 calibration targets.
+
+    Survival bonus has two components:
+    - Flat 15 per surviving PC (rewards keeping everyone alive)
+    - 0.5 × remaining HP (rewards healthy survivors)
+
+    This ensures all-4-alive always beats 3-alive regardless of kill timing.
+    Weights are CP7 calibration targets — verify against more scenarios.
     """
     base = sum(round_scores)
     round_bonus = (max_rounds - rounds_taken) * 10.0
-    survival_bonus = sum(
+    survivors_alive = sum(1 for s in state.pcs.values() if s.current_hp > 0)
+    survivor_flat_bonus = survivors_alive * 15.0
+    survivor_hp_bonus = sum(
         s.current_hp for s in state.pcs.values() if s.current_hp > 0
     ) * 0.5
-    return base + round_bonus + survival_bonus
+    return base + round_bonus + survivor_flat_bonus + survivor_hp_bonus
 
 
 # ---------------------------------------------------------------------------

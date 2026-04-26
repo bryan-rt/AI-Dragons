@@ -1,5 +1,20 @@
 # Changelog
 
+## [CP7] — 2026-04-25
+### Fixed
+- Survival bonus underweighted: added flat 15 per surviving PC + 0.5 × remaining HP.
+  All-4-alive now scores 23.5 points higher than 3-alive (was only 8.5).
+- Scenario 2 anthem_active=false: Dalai must cast Anthem as an action.
+- Taunt/Raise Shield score 0 at round start: now use threat-weighted EV
+  (all living enemies, not just adjacent).
+- Missing score_delta on Create a Diversion, Demoralize, Feint, Raise Shield.
+- Recall Knowledge now party-wide: checks best damage type across all PCs.
+
+### Verified
+- Hidden bonus does NOT leak into reaction Strikes (Strike Hard! correctly
+  uses squadmate stats, not Commander stats).
+- Strike Hard EV 8.55 (12th consecutive verification).
+
 ## [CP6] — 2026-04-25
 ### Added
 - sim/solver.py — full combat solver (solve_combat, CombatSolution, RoundLog, TurnLog)

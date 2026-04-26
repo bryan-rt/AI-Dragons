@@ -1,44 +1,42 @@
 # Current State
 
-**Last updated:** CP6 complete.
+**Last updated:** CP7 complete.
 
 ## Latest Test Count
 
-**444 passing** (420 prior + 24 new).
+**444 passing.**
 
 ## Active Work
 
-**CP6 — Full Combat Solver** (Pass 3 complete).
+**CP7 — Validation and Calibration** (complete).
 
 ### Completed
-- sim/solver.py: solve_combat(), _run_single_combat(), 5-plan seed variation
-- CombatSolution, RoundLog, TurnLog dataclasses
-- _reset_turn_state(): map_count=0, actions_remaining=3, shield/anthem/taunt clear
-- _end_of_turn_cleanup(): frightened decrement per turn
-- STAND evaluator (clears prone, 1 action)
-- condition_durations field on both snapshot types
-- Difficulty rating + cumulative EV scoring
-- format_combat_solution() round-by-round output
-- --full-combat CLI flag (single-round mode preserved)
-- Strike Hard EV 8.55 (11th consecutive verification)
+- Survival bonus: flat 15 per surviving PC + 0.5 × HP (was only 0.5 × HP)
+- Threat-weighted Taunt/Raise Shield EV (not just adjacent enemies)
+- score_delta added to Create a Diversion, Demoralize, Feint, Raise Shield
+- Recall Knowledge party-wide damage type advantage
+- Scenario 2 anthem_active=false (Dalai casts as action)
+- Verified: hidden bonus doesn't leak into reaction Strikes
+- Strike Hard EV 8.55 (12th consecutive verification)
 
 ## Known Regression Anchors
 
-- **EV 8.55** — Strike Hard. Verified 11 times through CP6.
-- **Scenario 1** — Victory in 1 round (trivial)
-- **Scenario 2** — Victory in 2 rounds (trivial)
+- **EV 8.55** — Strike Hard. Verified 12 times.
+- **Scenario 1** — Victory in 1 round (trivial), Score ~245
+- **Scenario 2 seed 42** — Victory in 2 rounds, Score ~250
+- **Scenario 2 seed 7** — Victory in 2 rounds, Score ~297
 
-## Known Simplifications (CP7 calibration targets)
+## Known Calibration Targets (CP9+)
 
-- Top 5 plans via seed variation — true branching deferred
-- Difficulty rating thresholds — needs calibration
-- Cumulative EV weights — round bonus x10, survival x0.5
-- STAND score delta — rough approximation
-- condition_durations field added but not fully used yet
+- Difficulty rating thresholds (round-count based only)
+- Mortar chain credit discount (0.3/0.35 heuristic)
+- Skill-action filtering threshold (not yet implemented — global 25% planned)
+- Per-round re-branching (not yet implemented — planned for CP8+)
+- Survival bonus weights (15 per survivor + 0.5×HP, verify with more scenarios)
 
 ## Next Checkpoint
 
-CP7 — Validation sweep, scenario tuning, scoring calibration
+CP8 — Level advancement (L2-L5), feat progression
 
 ## Links
 
