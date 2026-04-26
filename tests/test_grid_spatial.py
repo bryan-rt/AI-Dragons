@@ -142,7 +142,8 @@ class TestSwapMockForGrid:
     def test_strike_hard_ev_matches_mock(self) -> None:
         """Build a real grid matching the Checkpoint 1 mock's assumptions.
 
-        Expect identical result: eligible=True, best=Rook, EV 8.55.
+        Expect identical result: eligible=True, best=Rook, EV 7.65.
+        Phase B: Rook Earthbreaker d6 replaces Longsword d8.
         """
         grid = GridState(rows=10, cols=10)
         aetregan = CombatantState.from_character(
@@ -177,7 +178,7 @@ class TestSwapMockForGrid:
         assert result.best_target_ally == "Rook"
         assert result.best_target_enemy == "Bandit1"
         assert result.expected_damage_dealt == pytest.approx(
-            8.55, abs=EV_TOLERANCE,
+            7.65, abs=EV_TOLERANCE,
         )
 
 

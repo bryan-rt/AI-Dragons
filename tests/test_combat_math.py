@@ -294,8 +294,8 @@ class TestArmorClass:
         assert armor_class(dalai_state) == 16
 
     def test_erisen_ac(self, erisen_state: CombatantState) -> None:
-        """10 + Dex 2 (cap 3) + trained medium 3 + studded leather 2 = 17."""
-        assert armor_class(erisen_state) == 17
+        """10 + Dex 2 + trained 3 + leather 1 = 16 (Foundry: Leather Armor)."""
+        assert armor_class(erisen_state) == 16
 
 
 # ---------------------------------------------------------------------------
@@ -305,16 +305,15 @@ class TestArmorClass:
 class TestSaveBonuses:
 
     def test_aetregan_saves(self) -> None:
-        """Aetregan: Fort +4, Ref +8, Will +6.
+        """Aetregan: Fort +4, Ref +8, Will +5.
 
-        Wis corrected from 11 to 12 in Checkpoint 0.5 (attribute boosts
-        are always +2 to score). Wis 12 → mod +1, expert +5 = Will +6.
+        Foundry: Wis 10 → mod +0 (was Wis 12 in old factory). JSON authoritative.
         (AoN: https://2e.aonprd.com/Rules.aspx?ID=2110)
         """
         c = make_aetregan()
         assert save_bonus(c, SaveType.FORTITUDE) == 4   # Con +1, trained +3
         assert save_bonus(c, SaveType.REFLEX) == 8      # Dex +3, expert +5
-        assert save_bonus(c, SaveType.WILL) == 6        # Wis +1, expert +5
+        assert save_bonus(c, SaveType.WILL) == 5        # Wis +0, expert +5
 
     def test_rook_saves(self) -> None:
         """Rook: Fort +8, Ref +3, Will +6."""
@@ -337,11 +336,11 @@ class TestSaveBonuses:
         assert save_bonus(c, SaveType.WILL) == 5        # Wis +0, expert +5
 
     def test_erisen_saves(self) -> None:
-        """Erisen: Fort +7, Ref +7, Will +3."""
+        """Erisen: Fort +7, Ref +5, Will +5 (Foundry: Ref trained, Will expert)."""
         c = make_erisen()
         assert save_bonus(c, SaveType.FORTITUDE) == 7   # Con +2, expert +5
-        assert save_bonus(c, SaveType.REFLEX) == 7      # Dex +2, expert +5
-        assert save_bonus(c, SaveType.WILL) == 3        # Wis +0, trained +3
+        assert save_bonus(c, SaveType.REFLEX) == 5      # Dex +2, trained +3
+        assert save_bonus(c, SaveType.WILL) == 5        # Wis +0, expert +5
 
 
 # ---------------------------------------------------------------------------
@@ -580,16 +579,16 @@ class TestMortarScaling:
 class TestPerception:
 
     def test_aetregan_perception(self) -> None:
-        """Wis 12 → mod +1, expert +5 = +6.
+        """Wis 10 → mod +0, expert +5 = +5 (Foundry: Wis 10, JSON authoritative).
 
         Commander has expert Perception at L1.
         (AoN: https://2e.aonprd.com/Classes.aspx?ID=66)
         """
-        assert perception_bonus(make_aetregan()) == 6
+        assert perception_bonus(make_aetregan()) == 5
 
     def test_rook_perception(self) -> None:
-        """Wis +1, expert +5 = +6."""
-        assert perception_bonus(make_rook()) == 6
+        """Wis +1, trained +3 = +4 (Foundry: Guardian perception trained)."""
+        assert perception_bonus(make_rook()) == 4
 
 
 # ---------------------------------------------------------------------------

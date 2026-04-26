@@ -270,15 +270,15 @@ class TestGatherToMeDefensive:
 
 class TestStrikeHardRegression:
 
-    def test_ev_855_from_scenario_file(self) -> None:
-        """Strike Hard EV 8.55 unchanged after Checkpoint 4 changes."""
+    def test_ev_765_from_scenario_file(self) -> None:
+        """Strike Hard EV 7.65 after Phase B (Rook Earthbreaker d6)."""
         scenario = load_scenario(
             "scenarios/checkpoint_1_strike_hard.scenario",
         )
         ctx = scenario.build_tactic_context()
         result = evaluate_tactic(STRIKE_HARD, ctx)
         assert result.expected_damage_dealt == pytest.approx(
-            8.55, abs=EV_TOLERANCE,
+            7.65, abs=EV_TOLERANCE,
         )
         assert result.expected_damage_avoided == 0.0
         assert result.damage_prevented_sources == {}

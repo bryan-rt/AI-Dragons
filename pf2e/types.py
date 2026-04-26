@@ -49,6 +49,7 @@ class WeaponGroup(Enum):
 
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2191)
     """
+    AXE = auto()
     SWORD = auto()
     KNIFE = auto()
     BRAWLING = auto()

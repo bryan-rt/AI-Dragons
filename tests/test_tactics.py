@@ -77,8 +77,8 @@ class TestStrikeHard:
     ) -> None:
         """Rook in aura + Bandit in reach → reaction Strike at MAP 0.
 
-        With Anthem active: Rook longsword +8 vs AC 15, damage 9.5 avg.
-        d20: crit fail 1, fail 5, hit 10, crit 4. EV = 8.55.
+        With Anthem active: Rook Earthbreaker +8 vs AC 15, d6+5 (8.5 avg).
+        Phase B: Earthbreaker d6 replaces Longsword d8 → EV 7.65.
         """
         base_context.spatial = MockSpatialQueries(
             in_aura={"Rook": True, "Dalai Alpaca": True, "Erisen": False},
@@ -88,7 +88,7 @@ class TestStrikeHard:
         assert result.eligible
         assert result.best_target_ally == "Rook"
         assert result.best_target_enemy == "Bandit1"
-        assert result.expected_damage_dealt == pytest.approx(8.55, abs=EV_TOLERANCE)
+        assert result.expected_damage_dealt == pytest.approx(7.65, abs=EV_TOLERANCE)
         assert result.squadmates_responding == 1
         assert "MAP 0" in result.justification
 

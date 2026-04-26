@@ -2,6 +2,9 @@
 
 Canonical character builds, equipment constants, and grid-token
 factory mappings. Used by the scenario loader and test fixtures.
+
+Phase B: factories now call import_foundry_actor() for all four characters.
+Equipment constants retained for backward compatibility with tests.
 """
 
 from __future__ import annotations
@@ -20,6 +23,9 @@ from pf2e.types import (
     WeaponCategory,
     WeaponGroup,
 )
+from dataclasses import replace as _replace
+
+from sim.importers.foundry import import_foundry_actor
 
 # ---------------------------------------------------------------------------
 # Shared equipment
@@ -157,233 +163,43 @@ STUDDED_LEATHER = ArmorData(
 
 
 def make_aetregan() -> Character:
-    """Aetregan — Commander (Battlecry!), level 1.
+    """Aetregan (Commander). Data sourced from Foundry VTT actor export.
 
-    Key ability: INT. Wields Scorpion Whip (finesse, reach, trip, disarm),
-    wears Inventor Subterfuge Suit, carries Steel Shield. Has Shield Block.
-
-    AC: 10 + Dex 3 + trained medium 3 + suit 2 = 18 (no shield).
-    Class DC: 10 + Int 4 + trained 3 = 17.
-    Perception: Wis 1 + expert 5 = +6.
-    Max HP: 6 (Elf) + (8 (Commander) + 1 (Con)) x 1 = 15.
-
-    L1 Commander Feat: Deceptive Tactics (use Warfare Lore for Create
-    a Diversion and Feint). Skill action modeling is CP5 work.
-    (AoN: https://2e.aonprd.com/Feats.aspx?ID=7794)
-
-    Folio (5 tactics): Strike Hard!, Gather to Me!, Tactical Takedown,
-    Mountaineering Training, Shields Up!.
-    Prepared (3): Strike Hard!, Gather to Me!, Tactical Takedown.
-
-    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=60 — Elf)
+    Foundry name "Jotan Aethregen" → canonical "Aetregan" for scenario compat.
     (AoN: https://2e.aonprd.com/Classes.aspx?ID=66 — Commander)
+    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=60 — Elf)
     """
-    return Character(
-        name="Aetregan",
-        level=1,
-        abilities=AbilityScores(
-            str_=10, dex=16, con=12, int_=18, wis=12, cha=10,
-        ),
-        key_ability=Ability.INT,
-        weapon_proficiencies={
-            WeaponCategory.SIMPLE: ProficiencyRank.TRAINED,
-            WeaponCategory.MARTIAL: ProficiencyRank.TRAINED,
-            WeaponCategory.UNARMED: ProficiencyRank.TRAINED,
-            WeaponCategory.ADVANCED: ProficiencyRank.UNTRAINED,
-        },
-        armor_proficiency=ProficiencyRank.TRAINED,
-        perception_rank=ProficiencyRank.EXPERT,
-        save_ranks={
-            SaveType.FORTITUDE: ProficiencyRank.TRAINED,
-            SaveType.REFLEX: ProficiencyRank.EXPERT,
-            SaveType.WILL: ProficiencyRank.EXPERT,
-        },
-        class_dc_rank=ProficiencyRank.TRAINED,
-        equipped_weapons=(EquippedWeapon(SCORPION_WHIP),),
-        armor=SUBTERFUGE_SUIT,
-        shield=STEEL_SHIELD,
-        has_shield_block=True,
-        speed=30,
-        ancestry_hp=6,
-        class_hp=8,
-        skill_proficiencies={
-            Skill.ACROBATICS: ProficiencyRank.TRAINED,
-            Skill.ARCANA: ProficiencyRank.TRAINED,
-            Skill.CRAFTING: ProficiencyRank.TRAINED,
-            Skill.NATURE: ProficiencyRank.TRAINED,
-            Skill.OCCULTISM: ProficiencyRank.TRAINED,
-            Skill.RELIGION: ProficiencyRank.TRAINED,
-            Skill.SOCIETY: ProficiencyRank.TRAINED,
-            Skill.STEALTH: ProficiencyRank.TRAINED,
-            Skill.SURVIVAL: ProficiencyRank.TRAINED,
-            Skill.THIEVERY: ProficiencyRank.TRAINED,
-        },
-        lores={
-            "Warfare": ProficiencyRank.TRAINED,
-            "Deity": ProficiencyRank.TRAINED,
-        },
-        has_plant_banner=False,
-        has_deceptive_tactics=True,
-        has_lengthy_diversion=True,
-        has_commander_banner=True,
-    )
+    return _replace(import_foundry_actor("characters/fvtt-aetregan.json"), name="Aetregan")
 
 
 def make_rook() -> Character:
-    """Rook — Guardian, level 1.
-
-    Key ability: STR. Wields longsword, wears full plate,
-    carries steel shield. Has Shield Block + guardian reactions.
-
-    AC: 10 + Dex 0 (capped 0) + trained heavy 3 + full plate 6 = 19
-    Class DC: 10 + Str 4 + trained 3 = 17
+    """Rook (Guardian). Data sourced from Foundry VTT actor export.
 
     Speed: base 25 (Automaton). Full plate penalty applied via
     CombatantState.current_speed=20 (see make_rook_combat_state).
-    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=48)
+    (AoN: https://2e.aonprd.com/Classes.aspx?ID=67 — Guardian)
+    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=48 — Automaton)
     """
-    return Character(
-        name="Rook",
-        level=1,
-        abilities=AbilityScores(
-            str_=18, dex=10, con=16, int_=10, wis=12, cha=12,
-        ),
-        key_ability=Ability.STR,
-        weapon_proficiencies={
-            WeaponCategory.SIMPLE: ProficiencyRank.TRAINED,
-            WeaponCategory.MARTIAL: ProficiencyRank.TRAINED,
-            WeaponCategory.UNARMED: ProficiencyRank.TRAINED,
-            WeaponCategory.ADVANCED: ProficiencyRank.UNTRAINED,
-        },
-        armor_proficiency=ProficiencyRank.TRAINED,
-        perception_rank=ProficiencyRank.EXPERT,
-        save_ranks={
-            SaveType.FORTITUDE: ProficiencyRank.EXPERT,
-            SaveType.REFLEX: ProficiencyRank.TRAINED,
-            SaveType.WILL: ProficiencyRank.EXPERT,
-        },
-        class_dc_rank=ProficiencyRank.TRAINED,
-        equipped_weapons=(EquippedWeapon(LONGSWORD),),
-        armor=FULL_PLATE,
-        shield=STEEL_SHIELD,
-        has_shield_block=True,
-        guardian_reactions=1,
-        ancestry_hp=10,   # Automaton
-        class_hp=10,      # Guardian
-        skill_proficiencies={
-            Skill.ATHLETICS: ProficiencyRank.TRAINED,
-            Skill.INTIMIDATION: ProficiencyRank.TRAINED,
-            Skill.SOCIETY: ProficiencyRank.TRAINED,
-            Skill.CRAFTING: ProficiencyRank.TRAINED,
-        },
-        has_taunt=True,
-    )
+    return import_foundry_actor("characters/fvtt-rook.json")
 
 
 def make_dalai() -> Character:
-    """Dalai Alpaca — Bard (Warrior Muse), level 1.
+    """Dalai Alpaca (Bard). Data sourced from Foundry VTT actor export.
 
-    Key ability: CHA. Wields rapier (finesse, deadly d8),
-    wears leather armor. No shield.
-
-    AC: 10 + Dex 2 + trained light 3 + leather 1 = 16
-    Class DC: 10 + Cha 4 + trained 3 = 17
-    Speed: 25 ft (Human base).
-    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=64)
+    (AoN: https://2e.aonprd.com/Classes.aspx?ID=62 — Bard)
+    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=64 — Human)
     """
-    return Character(
-        name="Dalai Alpaca",
-        level=1,
-        abilities=AbilityScores(
-            str_=10, dex=14, con=12, int_=14, wis=10, cha=18,
-        ),
-        key_ability=Ability.CHA,
-        weapon_proficiencies={
-            WeaponCategory.SIMPLE: ProficiencyRank.TRAINED,
-            WeaponCategory.MARTIAL: ProficiencyRank.TRAINED,
-            WeaponCategory.UNARMED: ProficiencyRank.TRAINED,
-            WeaponCategory.ADVANCED: ProficiencyRank.UNTRAINED,
-        },
-        armor_proficiency=ProficiencyRank.TRAINED,
-        perception_rank=ProficiencyRank.EXPERT,
-        save_ranks={
-            SaveType.FORTITUDE: ProficiencyRank.TRAINED,
-            SaveType.REFLEX: ProficiencyRank.TRAINED,
-            SaveType.WILL: ProficiencyRank.EXPERT,
-        },
-        class_dc_rank=ProficiencyRank.TRAINED,
-        equipped_weapons=(EquippedWeapon(RAPIER),),
-        armor=LEATHER_ARMOR,
-        ancestry_hp=8,    # Human
-        class_hp=8,       # Bard
-        skill_proficiencies={
-            Skill.OCCULTISM: ProficiencyRank.TRAINED,
-            Skill.PERFORMANCE: ProficiencyRank.TRAINED,
-            Skill.DIPLOMACY: ProficiencyRank.TRAINED,
-            Skill.INTIMIDATION: ProficiencyRank.TRAINED,
-            Skill.ATHLETICS: ProficiencyRank.TRAINED,
-            Skill.ACROBATICS: ProficiencyRank.TRAINED,
-        },
-        lores={
-            "Bardic": ProficiencyRank.TRAINED,
-            "Warfare": ProficiencyRank.TRAINED,
-        },
-        has_courageous_anthem=True,
-        has_soothe=True,
-    )
+    return import_foundry_actor("characters/fvtt-dalai.json")
 
 
 def make_erisen() -> Character:
-    """Erisen — Inventor (Munitions Master), level 1.
+    """Erisen (Inventor). Data sourced from Foundry VTT actor export.
 
-    Key ability: INT. Wields dagger (agile, finesse, thrown 10),
-    wears studded leather. Has light mortar innovation (siege weapon).
-
-    AC: 10 + Dex 2 (capped 3) + trained medium 3 + studded leather 2 = 17
-    Class DC: 10 + Int 4 + trained 3 = 17
-    Speed: 35 ft (Elf base 30 + Nimble Elf +5).
-    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=60)
-    (AoN: https://2e.aonprd.com/Feats.aspx?ID=16)
+    Foundry name "Erizin" → canonical "Erisen" for scenario compat.
+    (AoN: https://2e.aonprd.com/Classes.aspx?ID=65 — Inventor)
+    (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=60 — Elf)
     """
-    return Character(
-        name="Erisen",
-        level=1,
-        abilities=AbilityScores(
-            str_=10, dex=14, con=14, int_=18, wis=10, cha=12,
-        ),
-        key_ability=Ability.INT,
-        weapon_proficiencies={
-            WeaponCategory.SIMPLE: ProficiencyRank.TRAINED,
-            WeaponCategory.MARTIAL: ProficiencyRank.TRAINED,
-            WeaponCategory.UNARMED: ProficiencyRank.TRAINED,
-            WeaponCategory.ADVANCED: ProficiencyRank.UNTRAINED,
-        },
-        armor_proficiency=ProficiencyRank.TRAINED,
-        perception_rank=ProficiencyRank.TRAINED,
-        save_ranks={
-            SaveType.FORTITUDE: ProficiencyRank.EXPERT,
-            SaveType.REFLEX: ProficiencyRank.EXPERT,
-            SaveType.WILL: ProficiencyRank.TRAINED,
-        },
-        class_dc_rank=ProficiencyRank.TRAINED,
-        equipped_weapons=(EquippedWeapon(DAGGER),),
-        armor=STUDDED_LEATHER,
-        speed=35,
-        ancestry_hp=6,    # Elf
-        class_hp=8,       # Inventor
-        skill_proficiencies={
-            Skill.CRAFTING: ProficiencyRank.TRAINED,
-            Skill.ARCANA: ProficiencyRank.TRAINED,
-            Skill.SOCIETY: ProficiencyRank.TRAINED,
-            Skill.ATHLETICS: ProficiencyRank.TRAINED,
-            Skill.NATURE: ProficiencyRank.TRAINED,
-        },
-        lores={
-            "Engineering": ProficiencyRank.TRAINED,
-            "Alkenstar": ProficiencyRank.TRAINED,
-        },
-        has_light_mortar=True,
-    )
+    return _replace(import_foundry_actor("characters/fvtt-erisen.json"), name="Erisen")
 
 
 def make_rook_combat_state(anthem_active: bool = False) -> CombatantState:

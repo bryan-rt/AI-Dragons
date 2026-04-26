@@ -19,7 +19,10 @@ SCENARIOS_DIR = "scenarios"
 # ---------------------------------------------------------------------------
 
 class TestKillerValidation:
-    """The canonical end-to-end test: file -> grid -> tactics -> EV 8.55."""
+    """The canonical end-to-end test: file -> grid -> tactics -> EV 7.65.
+
+    Phase B: Rook's Earthbreaker (d6) replaces Longsword (d8). EV 8.55 → 7.65.
+    """
 
     def test_strike_hard_from_disk(self) -> None:
         scenario = load_scenario(
@@ -41,7 +44,7 @@ class TestKillerValidation:
         assert result.best_target_ally == "Rook"
         assert result.best_target_enemy == "Bandit1"
         assert result.expected_damage_dealt == pytest.approx(
-            8.55, abs=EV_TOLERANCE,
+            7.65, abs=EV_TOLERANCE,
         )
 
 
@@ -196,7 +199,7 @@ m1 name=Bandit1 ac=15 ref=5 fort=3 will=2
         result = evaluate_tactic(STRIKE_HARD, ctx)
         assert result.eligible
         assert result.expected_damage_dealt == pytest.approx(
-            8.55, abs=EV_TOLERANCE,
+            7.65, abs=EV_TOLERANCE,
         )
 
     def test_optional_squadmates_absent(self) -> None:

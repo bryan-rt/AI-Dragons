@@ -617,7 +617,7 @@ class TestKillerRegression:
         ctx = scenario.build_tactic_context()
         result = evaluate_tactic(STRIKE_HARD, ctx)
         assert result.eligible
-        assert result.expected_damage_dealt == pytest.approx(8.55, abs=EV_TOLERANCE)
+        assert result.expected_damage_dealt == pytest.approx(7.65, abs=EV_TOLERANCE)
 
 
 class TestIntegration:
@@ -688,9 +688,28 @@ class TestAnthem:
 
 
 class TestSoothe:
+    """Soothe evaluator tests.
+
+    Dalai's Foundry sheet does not include Soothe (JSON authoritative).
+    Tests that need has_soothe=True use _soothe_state() which patches the
+    character to add the spell.
+    """
+
+    @staticmethod
+    def _soothe_state(**pc_overrides) -> RoundState:
+        """Build a RoundState where Dalai has has_soothe=True."""
+        from dataclasses import replace
+        state = _quick_state(pc_overrides=pc_overrides)
+        # Patch Dalai's character to have Soothe for evaluator testing
+        dalai_snap = state.pcs["Dalai Alpaca"]
+        patched_char = replace(dalai_snap.character, has_soothe=True)
+        patched_snap = replace(dalai_snap, character=patched_char)
+        new_pcs = dict(state.pcs)
+        new_pcs["Dalai Alpaca"] = patched_snap
+        return replace(state, pcs=new_pcs)
 
     def test_soothe_eligible_when_ally_wounded(self) -> None:
-        state = _quick_state(pc_overrides={"Rook": {"current_hp": 10}})
+        state = self._soothe_state(**{"Rook": {"current_hp": 10}})
         action = Action(type=ActionType.SOOTHE, actor_name="Dalai Alpaca", action_cost=2)
         from pf2e.actions import evaluate_soothe
         result = evaluate_soothe(action, state)
@@ -698,26 +717,24 @@ class TestSoothe:
         assert result.outcomes[0].hp_changes  # healing applied
 
     def test_soothe_ineligible_when_slot_used(self) -> None:
-        state = _quick_state(
-            pc_overrides={
-                "Rook": {"current_hp": 10},
-                "Dalai Alpaca": {"conditions": frozenset({"soothe_used"})},
-            },
-        )
+        state = self._soothe_state(**{
+            "Rook": {"current_hp": 10},
+            "Dalai Alpaca": {"conditions": frozenset({"soothe_used"})},
+        })
         action = Action(type=ActionType.SOOTHE, actor_name="Dalai Alpaca", action_cost=2)
         from pf2e.actions import evaluate_soothe
         result = evaluate_soothe(action, state)
         assert not result.eligible
 
     def test_soothe_ineligible_when_no_wounded(self) -> None:
-        state = _quick_state()  # all PCs at full HP
+        state = self._soothe_state()
         action = Action(type=ActionType.SOOTHE, actor_name="Dalai Alpaca", action_cost=2)
         from pf2e.actions import evaluate_soothe
         result = evaluate_soothe(action, state)
         assert not result.eligible
 
     def test_soothe_ineligible_when_actions_less_than_2(self) -> None:
-        state = _quick_state(pc_overrides={
+        state = self._soothe_state(**{
             "Rook": {"current_hp": 10},
             "Dalai Alpaca": {"actions_remaining": 1},
         })
@@ -727,14 +744,14 @@ class TestSoothe:
         assert not result.eligible
 
     def test_soothe_sets_used_condition(self) -> None:
-        state = _quick_state(pc_overrides={"Rook": {"current_hp": 10}})
+        state = self._soothe_state(**{"Rook": {"current_hp": 10}})
         action = Action(type=ActionType.SOOTHE, actor_name="Dalai Alpaca", action_cost=2)
         from pf2e.actions import evaluate_soothe
         result = evaluate_soothe(action, state)
         assert "soothe_used" in result.outcomes[0].conditions_applied.get("Dalai Alpaca", ())
 
     def test_soothe_ineligible_for_non_bard(self) -> None:
-        state = _quick_state(pc_overrides={"Rook": {"current_hp": 10}})
+        state = self._soothe_state(**{"Rook": {"current_hp": 10}})
         action = Action(type=ActionType.SOOTHE, actor_name="Rook", action_cost=2)
         from pf2e.actions import evaluate_soothe
         result = evaluate_soothe(action, state)
