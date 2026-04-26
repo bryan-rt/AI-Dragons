@@ -86,11 +86,19 @@ def _pc_candidates(
                 action_cost=1, target_name=en_name,
             ))
 
-    # DEMORALIZE: one per living enemy within 30 ft, not immune
+    # DEMORALIZE: one per living enemy within 30 ft, not immune.
+    # Suppress if already frightened_2+ (both success and crit are no-ops).
     for en_name, enemy in state.enemies.items():
         if enemy.current_hp <= 0:
             continue
         if "demoralize_immune" in enemy.conditions:
+            continue
+        already_frightened = max(
+            (int(c.split("_")[1]) for c in enemy.conditions
+             if c.startswith("frightened_")),
+            default=0,
+        )
+        if already_frightened >= 2:
             continue
         if distance_ft(actor.position, enemy.position) <= 30:
             actions.append(Action(
@@ -98,23 +106,29 @@ def _pc_candidates(
                 action_cost=1, target_name=en_name,
             ))
 
-    # CREATE_A_DIVERSION: one per living enemy, not immune
+    # CREATE_A_DIVERSION: one per living enemy, not immune.
+    # Suppress if target already off_guard (from prone, prior Diversion, etc.).
     for en_name, enemy in state.enemies.items():
         if enemy.current_hp <= 0:
             continue
         if "diversion_immune" in enemy.conditions:
+            continue
+        if enemy.off_guard or enemy.prone:
             continue
         actions.append(Action(
             type=ActionType.CREATE_A_DIVERSION, actor_name=actor_name,
             action_cost=1, target_name=en_name,
         ))
 
-    # FEINT: one per living enemy in melee reach (needs >= 2 actions)
+    # FEINT: one per living enemy in melee reach (needs >= 2 actions).
+    # Suppress if target already off_guard.
     if actor.actions_remaining >= 2:
         for en_name, enemy in state.enemies.items():
             if enemy.current_hp <= 0:
                 continue
             if is_within_reach(actor.position, enemy.position, reach):
+                if enemy.off_guard or enemy.prone:
+                    continue
                 actions.append(Action(
                     type=ActionType.FEINT, actor_name=actor_name,
                     action_cost=1, target_name=en_name,

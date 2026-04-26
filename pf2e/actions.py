@@ -591,6 +591,38 @@ def _evaluate_pc_strike(
     if not outcomes:
         outcomes.append(ActionOutcome(probability=1.0))
 
+    # Focus fire bonus: extra value for concentrating on a wounded enemy.
+    # A kill removes all future enemy actions — worth more than spreading damage.
+    focus_bonus = 0.0
+    if actor.map_count > 0:
+        hp_frac = target.current_hp / max(1, target.max_hp)
+        if hp_frac < 0.5 and target.damage_dice and "d" in target.damage_dice:
+            parts = target.damage_dice.split("d", 1)
+            avg_enemy_dmg = int(parts[0]) * die_average(f"d{parts[1]}") + target.damage_bonus
+            kill_proximity = 1.0 - hp_frac
+            focus_bonus = kill_proximity * avg_enemy_dmg * target.num_attacks_per_turn * 0.3
+
+    # Weapon switch penalty: nudge against switching weapons mid-turn on same
+    # target when the switch provides only marginal MAP benefit (agile: -4 vs -5).
+    weapon_switch_penalty = 0.0
+    if actor.map_count > 0:
+        weapon_switch_penalty = 0.5
+
+    if focus_bonus > 0 or weapon_switch_penalty > 0:
+        outcomes = [
+            ActionOutcome(
+                probability=o.probability,
+                hp_changes=o.hp_changes,
+                position_changes=o.position_changes,
+                conditions_applied=o.conditions_applied,
+                conditions_removed=o.conditions_removed,
+                reactions_consumed=o.reactions_consumed,
+                score_delta=o.score_delta + focus_bonus - weapon_switch_penalty,
+                description=o.description,
+            )
+            for o in outcomes
+        ]
+
     # Striking clears Hidden (AoN: Hidden condition — any action except Hide/Sneak/Step).
     # Subtract defensive value of Hidden being lost — beam search weighs whether
     # this Strike is worth giving up the flat check defense.
@@ -1682,7 +1714,12 @@ def evaluate_recall_knowledge(
         if mortar_advantage > 0:
             weakness_ev += mortar_advantage
 
-        recall_ev = p_success * (weakness_ev + avoidance_ev)
+        # Time value: weight by enemy HP fraction. High HP = more future turns
+        # to act on the information. Range: 1.0 (near dead) to 3.0 (full HP).
+        hp_fraction = target.current_hp / max(1, target.max_hp)
+        future_turns_weight = max(1.0, 1.0 + hp_fraction * 2.0)
+
+        recall_ev = p_success * (weakness_ev + avoidance_ev) * future_turns_weight
 
     # Share knowledge with ALL living party members — in PF2e, the recalling
     # character communicates what they learn to allies (standard table play).
