@@ -51,6 +51,9 @@ class CombatantSnapshot:
     conditions: frozenset[str] = frozenset()
     # General-purpose condition/immunity tags ("demoralize_immune", etc.).
     # Does NOT replace existing boolean fields (off_guard, prone, etc.).
+    condition_durations: dict[str, int] = field(default_factory=dict)
+    # Tracks rounds/turns remaining for time-limited conditions.
+    # Encounter-duration conditions are NOT tracked here.
 
     @classmethod
     def from_combatant_state(cls, state: CombatantState) -> CombatantSnapshot:
@@ -108,6 +111,7 @@ class EnemySnapshot:
     actions_remaining: int
     conditions: frozenset[str] = frozenset()
     # General-purpose condition/immunity tags. Same as CombatantSnapshot.
+    condition_durations: dict[str, int] = field(default_factory=dict)
     weaknesses: dict[str, int] = field(default_factory=dict)
     resistances: dict[str, int] = field(default_factory=dict)
 

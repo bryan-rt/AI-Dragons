@@ -1,5 +1,30 @@
 # Changelog
 
+## [CP6] — 2026-04-25
+### Added
+- sim/solver.py — full combat solver (solve_combat, CombatSolution, RoundLog, TurnLog)
+- STAND evaluator — clears Prone, 1 action cost
+- condition_durations field on CombatantSnapshot and EnemySnapshot
+- _reset_turn_state() — resets action economy at start of each turn
+- _end_of_turn_cleanup() — frightened decrement, per-turn condition expiry
+- Condition duration rules for all condition tags
+- Top 5 plan evaluation via seed variation (seeds N..N+4)
+- Scenario difficulty rating (trivial/easy/medium/hard/very_hard/impossible)
+- Cumulative EV scoring with round bonus and survival bonus
+- Round-by-round CLI output with HP tracking
+- --full-combat CLI flag
+
+### Fixed
+- Action economy reset: map_count and actions_remaining now reset each turn
+- Dead combatants skipped in solver loop (no empty turn logs)
+- Anthem correctly clears at start of Dalai's turn (not round end)
+- Taunt correctly clears at start of Rook's turn
+- Shield_raised clears at start of actor's next turn
+
+### Regressions
+- Strike Hard EV 8.55 (11th consecutive verification)
+- simulate_round() single-round path unchanged and backward compatible
+
 ## [CP5.3] — 2026-04-25
 ### Added
 - RECALL_KNOWLEDGE evaluator — conditional W/R insight, Society for humanoids

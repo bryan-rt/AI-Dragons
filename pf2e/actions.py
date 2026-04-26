@@ -77,6 +77,7 @@ class ActionType(Enum):
     SNEAK = auto()             # Move while Hidden (half Speed)
     SEEK = auto()              # Perception → reveal Hidden enemies
     AID = auto()               # Prepare to aid an ally (next-round bonus)
+    STAND = auto()             # Stand up from Prone (1 action)
 
 
 @dataclass(frozen=True)
@@ -1763,6 +1764,34 @@ def evaluate_aid(
 
 
 # ---------------------------------------------------------------------------
+# CP6: STAND
+# ---------------------------------------------------------------------------
+
+def evaluate_stand(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Stand up from Prone. Costs 1 action.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2323)
+    """
+    actor = state.pcs.get(action.actor_name) or state.enemies.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Actor not found")
+    if not actor.prone:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Not prone")
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            conditions_removed={action.actor_name: ("prone",)},
+            description="Stand up (Prone cleared)",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -1794,6 +1823,7 @@ _ACTION_EVALUATORS: dict[ActionType, Callable[..., ActionResult]] = {
     ActionType.SNEAK: evaluate_sneak,
     ActionType.SEEK: evaluate_seek,
     ActionType.AID: evaluate_aid,
+    ActionType.STAND: evaluate_stand,
 }
 
 

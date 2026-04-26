@@ -574,8 +574,8 @@ class TestActivateTactic:
 
 class TestDispatcher:
 
-    def test_dispatcher_all_25_types_registered(self) -> None:
-        """All 25 action types (excluding EVER_READY) have evaluators."""
+    def test_dispatcher_all_types_registered(self) -> None:
+        """All action types (excluding EVER_READY) have evaluators."""
         from pf2e.actions import _ACTION_EVALUATORS
         expected = {
             ActionType.END_TURN, ActionType.PLANT_BANNER,
@@ -585,13 +585,12 @@ class TestDispatcher:
             ActionType.DEMORALIZE, ActionType.CREATE_A_DIVERSION,
             ActionType.FEINT, ActionType.SHIELD_BLOCK,
             ActionType.INTERCEPT_ATTACK, ActionType.ACTIVATE_TACTIC,
-            # CP5.2
             ActionType.ANTHEM, ActionType.SOOTHE,
             ActionType.MORTAR_AIM, ActionType.MORTAR_LOAD,
             ActionType.MORTAR_LAUNCH, ActionType.TAUNT,
-            # CP5.3
             ActionType.RECALL_KNOWLEDGE, ActionType.HIDE,
             ActionType.SNEAK, ActionType.SEEK, ActionType.AID,
+            ActionType.STAND,
         }
         assert set(_ACTION_EVALUATORS.keys()) == expected
 

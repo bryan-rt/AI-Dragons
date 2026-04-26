@@ -237,6 +237,12 @@ def _pc_candidates(
                     action_cost=1, target_name=pc_name,
                 ))
 
+    # STAND: if prone
+    if actor.prone and actor.actions_remaining >= 1:
+        actions.append(Action(
+            type=ActionType.STAND, actor_name=actor_name, action_cost=1,
+        ))
+
     # Always include END_TURN
     actions.append(_end_turn(actor_name))
 
@@ -483,6 +489,12 @@ def _enemy_candidates(state: RoundState, actor_name: str) -> list[Action]:
                     type=ActionType.STRIDE, actor_name=actor_name,
                     action_cost=1, target_position=best_dest,
                 ))
+
+    # STAND for prone enemies
+    if enemy.prone:
+        actions.append(Action(
+            type=ActionType.STAND, actor_name=actor_name, action_cost=1,
+        ))
 
     actions.append(_end_turn(actor_name))
     return actions
