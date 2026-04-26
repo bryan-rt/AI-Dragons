@@ -590,7 +590,7 @@ class TestDispatcher:
             ActionType.MORTAR_LAUNCH, ActionType.TAUNT,
             ActionType.RECALL_KNOWLEDGE, ActionType.HIDE,
             ActionType.SNEAK, ActionType.SEEK, ActionType.AID,
-            ActionType.STAND,
+            ActionType.STAND, ActionType.CAST_SPELL,
         }
         assert set(_ACTION_EVALUATORS.keys()) == expected
 

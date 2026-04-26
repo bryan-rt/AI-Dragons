@@ -385,6 +385,18 @@ def perception_bonus(character: Character) -> int:
     return wis_mod + prof
 
 
+def spell_attack_bonus(character: Character) -> int:
+    """Spell attack bonus = key ability modifier + class DC proficiency.
+
+    At L1, spell attack proficiency equals class DC proficiency (Trained).
+    Equivalent to class_dc(character) - 10.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2187)
+    """
+    ability_mod = character.abilities.mod(character.key_ability)
+    prof = proficiency_bonus(character.class_dc_rank, character.level)
+    return ability_mod + prof
+
+
 def skill_bonus(character: Character, skill: Skill) -> int:
     """Total skill check bonus: ability mod + proficiency.
 

@@ -1,40 +1,32 @@
 # Current State
 
-**Last updated:** Phase B+.2 complete.
+**Last updated:** CP5.4 complete.
 
 ## Latest Test Count
 
-**519 passing.**
+**545 passing.**
 
 ## Active Work
 
-**Phase B+.2 — Handler Registry Design (Analysis Checkpoint)** (complete).
+**CP5.4 — Spell Chassis and Dalai's Combat Spells** (complete).
 
 ### Completed
-- Full Rule Element content inspection (all 26 combat-kind REs examined)
-- Classification: 17 handled, 6 non-combat, 3 genuinely unmodeled (non-blocking)
-- Unmodeled effects warning added to session init
-- D29 revised (handler priority from content, not counts)
-- D30 added (registry deferred)
-- `pf2e/effects/__init__.py` placeholder created
-- Extended analysis report with detailed classification
-- EV 7.65 (15th verification)
+- Parameterized spell chassis: 4 pattern evaluators (auto-hit, condition, attack roll, save damage)
+- 3 AoN-verified spells: Fear, Force Barrage, Needle Darts
+- CAST_SPELL ActionType with candidate generation and range filtering
+- Character.known_spells populated by importer from SPELL_REGISTRY
+- Dalai now casts Force Barrage in combat (replaces Create a Diversion)
+- DamageType.FORCE, spell_attack_bonus() added
+- 26 new tests, EV 7.65 (16th verification)
 
-### Key Finding
-Zero new handlers needed for current party at L1. The handler registry
-is deferred until CP8 (Level Advancement) or enemy fear system.
+### AoN Corrections Applied
+- Fear: 2 actions (not 1), AoN ID=1524
+- Needle Darts: spell attack roll (not save), 3d4 (not 2d4), cantrip, AoN ID=1375
+- Force Barrage: range 120 ft (not 60), AoN ID=1536
 
 ## Known Regression Anchors
 
-- **EV 7.65** — Strike Hard (Rook Earthbreaker). 15th verification.
-
-## Handler Triggers (D30)
-
-| Trigger | Handler Needed | When |
-|---|---|---|
-| Enemy fear effects | Commander's Banner +1 vs fear (FlatModifier) | Enemy spellcasting |
-| Skill automation | Assurance (SubstituteRoll) | Skill action expansion |
-| Level advancement | Class DC scaling (ActiveEffectLike) | CP8 |
+- **EV 7.65** — Strike Hard (Rook Earthbreaker). 16th verification.
 
 ## Next Checkpoint
 

@@ -237,6 +237,31 @@ def _pc_candidates(
                     action_cost=1, target_name=pc_name,
                 ))
 
+    # CAST_SPELL: for each known spell in SPELL_REGISTRY (CP5.4)
+    from pf2e.spells import SPELL_REGISTRY
+    for slug, rank in actor.character.known_spells.items():
+        defn = SPELL_REGISTRY.get(slug)
+        if defn is None:
+            continue
+        # Determine valid action costs
+        if defn.scales_with_actions:
+            costs = [c for c in range(1, 4) if c <= actor.actions_remaining]
+        else:
+            costs = [defn.action_cost] if defn.action_cost <= actor.actions_remaining else []
+        for cost in costs:
+            for en_name, enemy in state.enemies.items():
+                if enemy.current_hp <= 0:
+                    continue
+                if distance_ft(actor.position, enemy.position) > defn.range_ft:
+                    continue
+                actions.append(Action(
+                    type=ActionType.CAST_SPELL,
+                    actor_name=actor_name,
+                    action_cost=cost,
+                    target_name=en_name,
+                    tactic_name=slug,
+                ))
+
     # STAND: if prone
     if actor.prone and actor.actions_remaining >= 1:
         actions.append(Action(

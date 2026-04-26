@@ -1,5 +1,38 @@
 # Changelog
 
+## [CP5.4] — 2026-04-26
+### Added
+- `pf2e/spells.py` — SpellDefinition dataclass, SpellPattern enum, SPELL_REGISTRY
+- Spell chassis evaluator: 4 pattern helpers (auto-hit, condition, attack roll, save damage)
+- `CAST_SPELL` ActionType with candidate generation and range filtering
+- `DamageType.FORCE` added to `pf2e/types.py`
+- `spell_attack_bonus()` in `pf2e/combat_math.py`
+- `Character.known_spells` field (slug → rank mapping)
+- Importer populates known_spells from Foundry spell items in SPELL_REGISTRY
+- Fear (rank 1, 2 actions, Will save → frightened condition)
+- Force Barrage (rank 1, 1-3 actions, auto-hit, 1d4+1 force/missile)
+- Needle Darts (cantrip, 2 actions, spell attack vs AC, 3d4 piercing)
+- `tests/test_spells.py` — 26 new tests
+
+### Changed
+- Dalai now casts Force Barrage in combat instead of Create a Diversion spam
+- Beam search generates CAST_SPELL candidates for known spells with range filtering
+- CLI output labels spells: "Cast Force Barrage vs Bandit2"
+
+### AoN Corrections (from Pass 1 research)
+- Fear: 2 actions (brief said 1) — AoN ID=1524
+- Needle Darts: spell attack roll, not save; 3d4, not 2d4; cantrip — AoN ID=1375
+- Force Barrage: range 120 ft (brief said 60) — AoN ID=1536
+
+### Phase C deferred
+- Spell slot tracking (Dalai has 2 rank-1 slots at L1)
+- Needle Darts persistent bleed on crit
+- Force Barrage missile splitting across targets
+- Heightening at higher ranks
+
+### Regressions
+- EV 7.65 (16th verification)
+
 ## [Phase B+.2] — 2026-04-26
 ### Added
 - `pf2e/effects/__init__.py` — placeholder for future handler registry

@@ -632,6 +632,12 @@ def _action_label(action: Action, state: RoundState | None = None) -> str:
         if detail:
             return f"Activate {action.tactic_name} ({detail})"
         return f"Activate {action.tactic_name}"
+    if action.type == ActionType.CAST_SPELL:
+        from pf2e.spells import SPELL_REGISTRY
+        defn = SPELL_REGISTRY.get(action.tactic_name)
+        name = defn.name if defn else action.tactic_name
+        cost = f" ({action.action_cost}a)" if action.action_cost > 1 else ""
+        return f"Cast {name}{cost} vs {action.target_name}"
     return action.type.name
 
 

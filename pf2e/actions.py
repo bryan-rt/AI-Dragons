@@ -78,6 +78,8 @@ class ActionType(Enum):
     SEEK = auto()              # Perception → reveal Hidden enemies
     AID = auto()               # Prepare to aid an ally (next-round bonus)
     STAND = auto()             # Stand up from Prone (1 action)
+    # CP5.4: spell chassis
+    CAST_SPELL = auto()        # Generic spell cast; slug in tactic_name
 
 
 @dataclass(frozen=True)
@@ -1869,6 +1871,280 @@ def evaluate_stand(
 
 
 # ---------------------------------------------------------------------------
+# Spell chassis evaluator (CP5.4)
+# ---------------------------------------------------------------------------
+
+def evaluate_spell(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Evaluate a spell cast using the SpellDefinition chassis.
+
+    action.tactic_name holds the spell slug.
+    action.target_name is the primary target.
+    action.action_cost is the actions spent (1-3 for scaling spells).
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2302)
+    """
+    from pf2e.spells import SPELL_REGISTRY, SpellPattern
+
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="Actor not found")
+
+    slug = action.tactic_name
+    defn = SPELL_REGISTRY.get(slug)
+    if defn is None:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason=f"Unknown spell: {slug!r}")
+
+    if slug not in actor.character.known_spells:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason=f"Spell {slug!r} not known")
+
+    # Phase C: track spell slots spent. Currently assumes unlimited casts.
+
+    if defn.pattern == SpellPattern.AUTO_HIT_DAMAGE:
+        return _evaluate_auto_hit_spell(action, state, actor, defn)
+    elif defn.pattern == SpellPattern.SAVE_OR_CONDITION:
+        return _evaluate_condition_spell(action, state, actor, defn)
+    elif defn.pattern == SpellPattern.ATTACK_ROLL:
+        return _evaluate_attack_roll_spell(action, state, actor, defn)
+    elif defn.pattern == SpellPattern.SAVE_FOR_DAMAGE:
+        return _evaluate_save_damage_spell(action, state, actor, defn)
+    else:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason=f"Unimplemented: {defn.pattern}")
+
+
+def _evaluate_auto_hit_spell(
+    action: Action, state: RoundState,
+    actor: CombatantSnapshot, defn: "SpellDefinition",
+) -> ActionResult:
+    """Auto-hit damage spell (Force Barrage pattern).
+
+    No roll — damage applies automatically. Scales with actions spent.
+    (AoN: https://2e.aonprd.com/Spells.aspx?ID=1536)
+    """
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="No valid target")
+
+    actions_spent = action.action_cost
+    missiles = defn.missiles_per_action * actions_spent
+    dmg_per_missile = die_average(defn.damage_die) + defn.damage_bonus
+    total_dmg = missiles * dmg_per_missile
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            hp_changes={action.target_name: -total_dmg},
+            description=f"{defn.name} ({missiles} missiles): {total_dmg:.1f} force",
+        ),),
+    )
+
+
+def _evaluate_condition_spell(
+    action: Action, state: RoundState,
+    actor: CombatantSnapshot, defn: "SpellDefinition",
+) -> ActionResult:
+    """Non-basic save, condition outcomes (Fear pattern).
+
+    Each degree of success produces a distinct condition.
+    EV is computed as score_delta from the condition's combat impact.
+    (AoN: https://2e.aonprd.com/Spells.aspx?ID=1524)
+    """
+    from pf2e.combat_math import class_dc
+
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="No valid target")
+
+    dc = class_dc(actor.character)
+    save_bonus = target.saves.get(defn.save_type, 0)
+    outcomes_d20 = enumerate_d20_outcomes(save_bonus, dc)
+
+    crit_s_prob = outcomes_d20.critical_success / 20
+    success_prob = outcomes_d20.success / 20
+    failure_prob = outcomes_d20.failure / 20
+    crit_f_prob = outcomes_d20.critical_failure / 20
+
+    # Map degree labels to d20 probabilities
+    degree_probs = {
+        "crit_success": crit_s_prob,
+        "success": success_prob,
+        "failure": failure_prob,
+        "crit_failure": crit_f_prob,
+        "crit_failure_fleeing": crit_f_prob,  # same prob as crit_failure
+    }
+
+    # Compute EV of frightened condition on an enemy:
+    # Frightened N reduces enemy checks/DCs by N.
+    # - Reduces enemy attack rolls → fewer hits → damage prevented
+    # - Reduces enemy AC (it's a DC) → better ally hit rates → extra damage
+    # Approximate as: frightened_level * 0.05 * enemy_attacks * avg_damage * 2
+    # (×2 accounts for both offensive reduction and defensive reduction)
+    def _frightened_ev(level: int) -> float:
+        if level == 0 or not target.damage_dice:
+            return 0.0
+        if "d" in target.damage_dice:
+            parts = target.damage_dice.split("d", 1)
+            avg_dmg = int(parts[0]) * die_average(f"d{parts[1]}") + target.damage_bonus
+        else:
+            avg_dmg = float(target.damage_bonus)
+        # Each point of frightened ≈ 5% swing per attack × both offense+defense
+        return level * 0.05 * target.num_attacks_per_turn * avg_dmg * 2
+
+    outcomes: list[ActionOutcome] = []
+
+    # Build one outcome per meaningful degree
+    # Crit success: no effect
+    if crit_s_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_s_prob,
+            description=f"{defn.name}: no effect (crit success)",
+        ))
+
+    # Success: frightened 1
+    if success_prob > 0:
+        fev = _frightened_ev(1)
+        outcomes.append(ActionOutcome(
+            probability=success_prob,
+            conditions_applied={action.target_name: ("frightened_1",)},
+            score_delta=fev,
+            description=f"{defn.name}: frightened 1 (EV {fev:.1f})",
+        ))
+
+    # Failure: frightened 2
+    if failure_prob > 0:
+        fev = _frightened_ev(2)
+        outcomes.append(ActionOutcome(
+            probability=failure_prob,
+            conditions_applied={action.target_name: ("frightened_2",)},
+            score_delta=fev,
+            description=f"{defn.name}: frightened 2 (EV {fev:.1f})",
+        ))
+
+    # Crit failure: frightened 3 + fleeing 1 round
+    if crit_f_prob > 0:
+        fev = _frightened_ev(3)
+        # Fleeing removes the enemy from combat for 1 round — high value
+        flee_ev = target.num_attacks_per_turn * (
+            die_average(f"d{target.damage_dice.split('d')[1]}")
+            + target.damage_bonus
+            if "d" in target.damage_dice else target.damage_bonus
+        ) if target.damage_dice else 0.0
+        outcomes.append(ActionOutcome(
+            probability=crit_f_prob,
+            conditions_applied={action.target_name: ("frightened_3", "fleeing_1")},
+            score_delta=fev + flee_ev,
+            description=f"{defn.name}: frightened 3 + fleeing (EV {fev + flee_ev:.1f})",
+        ))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+def _evaluate_attack_roll_spell(
+    action: Action, state: RoundState,
+    actor: CombatantSnapshot, defn: "SpellDefinition",
+) -> ActionResult:
+    """Spell attack roll vs target AC. Crit doubles damage.
+
+    For cantrips with the Attack trait: MAP applies if the caster
+    has already made an attack this turn (map_count > 0).
+    (AoN: https://2e.aonprd.com/Spells.aspx?ID=1375 — Needle Darts)
+    """
+    from pf2e.combat_math import spell_attack_bonus
+
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="No valid target")
+
+    # MAP applies for Attack-trait spells (never agile)
+    penalty = map_penalty(actor.map_count + 1, agile=False)
+    atk_bonus = spell_attack_bonus(actor.character) + penalty
+
+    # Off-guard/prone reduce effective AC
+    effective_ac = target.ac - (2 if (target.off_guard or target.prone) else 0)
+
+    outcomes_d20 = enumerate_d20_outcomes(atk_bonus, effective_ac)
+
+    base_dmg = defn.damage_dice * die_average(defn.damage_die) + defn.damage_bonus
+    crit_dmg = base_dmg * 2
+    # Phase C: Needle Darts crit adds 1 persistent bleed damage
+
+    miss_prob = (outcomes_d20.failure + outcomes_d20.critical_failure) / 20
+    hit_prob = outcomes_d20.success / 20
+    crit_prob = outcomes_d20.critical_success / 20
+
+    outcomes: list[ActionOutcome] = []
+    if miss_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=miss_prob,
+            description=f"{defn.name}: miss",
+        ))
+    if hit_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=hit_prob,
+            hp_changes={action.target_name: -base_dmg},
+            description=f"{defn.name}: hit {base_dmg:.1f}",
+        ))
+    if crit_prob > 0:
+        outcomes.append(ActionOutcome(
+            probability=crit_prob,
+            hp_changes={action.target_name: -crit_dmg},
+            description=f"{defn.name}: crit {crit_dmg:.1f}",
+        ))
+
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+def _evaluate_save_damage_spell(
+    action: Action, state: RoundState,
+    actor: CombatantSnapshot, defn: "SpellDefinition",
+) -> ActionResult:
+    """Basic save for damage. Crit success=0, success=half, fail=full, crit fail=double.
+
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2296)
+    """
+    from pf2e.combat_math import class_dc
+
+    target = state.enemies.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="No valid target")
+
+    dice = defn.damage_dice
+    if defn.scales_with_actions:
+        # Not currently used but future-proofing
+        extra_actions = action.action_cost - 1
+        dice += extra_actions * 4  # generic scaling placeholder
+    base_dmg = dice * die_average(defn.damage_die) + defn.damage_bonus
+
+    dc = class_dc(actor.character)
+    save_mod = target.saves.get(defn.save_type, 0)
+    outcomes_d20 = enumerate_d20_outcomes(save_mod, dc)
+
+    ev = (
+        (outcomes_d20.critical_failure / 20) * base_dmg * 2
+        + (outcomes_d20.failure / 20) * base_dmg
+        + (outcomes_d20.success / 20) * base_dmg * 0.5
+    )
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            hp_changes={action.target_name: -ev},
+            description=f"{defn.name}: EV {ev:.2f}",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -1901,6 +2177,8 @@ _ACTION_EVALUATORS: dict[ActionType, Callable[..., ActionResult]] = {
     ActionType.SEEK: evaluate_seek,
     ActionType.AID: evaluate_aid,
     ActionType.STAND: evaluate_stand,
+    # CP5.4: spell chassis
+    ActionType.CAST_SPELL: evaluate_spell,
 }
 
 

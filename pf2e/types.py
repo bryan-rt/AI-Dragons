@@ -79,6 +79,7 @@ class DamageType(Enum):
     COLD = auto()
     ELECTRICITY = auto()
     ACID = auto()
+    FORCE = auto()
 
 
 class SaveType(Enum):

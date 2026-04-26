@@ -90,6 +90,7 @@ DAMAGE_TYPE_MAP: dict[str, DamageType] = {
     "cold": DamageType.COLD,
     "electricity": DamageType.ELECTRICITY,
     "acid": DamageType.ACID,
+    "force": DamageType.FORCE,
 }
 
 # Maps Foundry feat names to Character boolean flag names.
@@ -418,6 +419,29 @@ def _extract_spell_names(items: list[dict]) -> set[str]:
     return {item["name"] for item in items if item.get("type") == "spell"}
 
 
+def _extract_known_spells(items: list[dict]) -> dict[str, int]:
+    """Extract known combat spells mapped to rank (0 = cantrip).
+
+    Only includes spells that have a definition in SPELL_REGISTRY.
+    Other spells (Figment, Telekinetic Hand, etc.) are ignored.
+    """
+    from pf2e.spells import SPELL_REGISTRY
+
+    known: dict[str, int] = {}
+    for item in items:
+        if item.get("type") != "spell":
+            continue
+        slug = item.get("system", {}).get("slug")
+        if not slug:
+            continue
+        if slug in SPELL_REGISTRY:
+            rank = item.get("system", {}).get("level", {}).get("value", 1)
+            # Cantrips are rank 0 in our system
+            defn = SPELL_REGISTRY[slug]
+            known[slug] = defn.rank
+    return known
+
+
 def _derive_speed(ancestry_item: dict, feat_names: set[str]) -> int:
     """Derive speed from ancestry base speed + Nimble Elf (+5 if present).
 
@@ -504,6 +528,9 @@ def import_foundry_actor(path: str) -> Character:
     has_courageous_anthem = "Courageous Anthem" in spell_names
     has_soothe = "Soothe" in spell_names
 
+    # Known combat spells (CP5.4 spell chassis)
+    known_spells = _extract_known_spells(items)
+
     return Character(
         name=data["name"],
         level=level,
@@ -526,5 +553,6 @@ def import_foundry_actor(path: str) -> Character:
         guardian_reactions=guardian_reactions,
         has_courageous_anthem=has_courageous_anthem,
         has_soothe=has_soothe,
+        known_spells=known_spells,
         **feat_flags,
     )
