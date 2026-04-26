@@ -1592,28 +1592,79 @@ def evaluate_recall_knowledge(
     rk_bonus = skill_bonus(actor.character, Skill.SOCIETY)
     p_success = _d20_success_probability(rk_bonus, RECALL_KNOWLEDGE_DC)
 
-    # Score = EV gain from W/R insight on remaining PARTY strikes (not just actor).
-    # The information benefits any party member who attacks this enemy.
+    # Score = EV gain from W/R insight on remaining PARTY strikes.
+    # Two components:
+    #   weakness_ev: bonus damage from hitting weaknesses
+    #   avoidance_ev: damage saved by switching away from resisted weapons
     if not target.weaknesses and not target.resistances:
         recall_ev = 0.0
     else:
-        # Find the best damage-type advantage across the whole party
-        best_advantage = 0.0
-        total_party_strikes = 0
+        weakness_ev = 0.0
+        avoidance_ev = 0.0
+
         for pc_name, pc_snap in state.pcs.items():
             if pc_snap.current_hp <= 0:
                 continue
-            remaining = min(pc_snap.actions_remaining, 2)
-            total_party_strikes += remaining
-            for eq in pc_snap.character.equipped_weapons:
+            remaining_strikes = min(pc_snap.actions_remaining, 2)
+            if remaining_strikes <= 0:
+                continue
+
+            melee_weapons = [eq for eq in pc_snap.character.equipped_weapons
+                             if eq.weapon.is_melee]
+            if not melee_weapons:
+                continue
+
+            # Find the primary weapon (first in tuple — actively held)
+            primary = melee_weapons[0]
+            primary_type = primary.weapon.damage_type.name.lower()
+            primary_dmg = die_average(primary.weapon.damage_die) + 0.0
+
+            # Weakness EV: bonus from exploiting weakness with best weapon
+            for eq in melee_weapons:
                 dmg_type = eq.weapon.damage_type.name.lower()
                 advantage = target.weaknesses.get(dmg_type, 0) - target.resistances.get(dmg_type, 0)
-                best_advantage = max(best_advantage, advantage)
-        # Also check mortar (bludgeoning) if any PC has light mortar
-        mortar_advantage = target.weaknesses.get("bludgeoning", 0) - target.resistances.get("bludgeoning", 0)
-        best_advantage = max(best_advantage, mortar_advantage)
+                if advantage > 0:
+                    weakness_ev += advantage * remaining_strikes
 
-        recall_ev = p_success * best_advantage * max(1, total_party_strikes // 2)
+            # Avoidance EV: knowing about resistance lets the search make
+            # better decisions — either switching to a non-resisted weapon
+            # or redirecting attacks to other enemies/actions.
+            # Value = resistance amount × remaining strikes for any PC
+            # whose primary weapon type is resisted.
+            primary_resistance = target.resistances.get(primary_type, 0)
+            if primary_resistance > 0:
+                # Check if PC has a non-resisted alternative weapon
+                best_alt_dmg = 0.0
+                for eq in melee_weapons:
+                    alt_type = eq.weapon.damage_type.name.lower()
+                    if target.resistances.get(alt_type, 0) == 0:
+                        best_alt_dmg = max(best_alt_dmg, die_average(eq.weapon.damage_die))
+                # Also consider spells as alternatives
+                for slug in pc_snap.character.known_spells:
+                    from pf2e.spells import SPELL_REGISTRY
+                    defn = SPELL_REGISTRY.get(slug)
+                    if defn and defn.damage_type:
+                        spell_type = defn.damage_type.name.lower()
+                        if target.resistances.get(spell_type, 0) == 0:
+                            spell_dmg = defn.damage_dice * die_average(defn.damage_die) + defn.damage_bonus
+                            best_alt_dmg = max(best_alt_dmg, spell_dmg)
+
+                if best_alt_dmg > 0:
+                    # Can switch: gain = alt_dmg - (primary_dmg - resistance)
+                    resisted_dmg = max(0.0, primary_dmg - primary_resistance)
+                    avoidance_ev += max(0.0, best_alt_dmg - resisted_dmg) * remaining_strikes
+                else:
+                    # No non-resisted alternative: info still valuable for
+                    # redirecting attacks to other enemies. Value = resistance
+                    # amount (the search will deprioritize this target).
+                    avoidance_ev += primary_resistance * remaining_strikes
+
+        # Also check mortar (bludgeoning) for weakness
+        mortar_advantage = target.weaknesses.get("bludgeoning", 0) - target.resistances.get("bludgeoning", 0)
+        if mortar_advantage > 0:
+            weakness_ev += mortar_advantage
+
+        recall_ev = p_success * (weakness_ev + avoidance_ev)
 
     return ActionResult(
         action=action,
@@ -1904,16 +1955,41 @@ def evaluate_spell(
     # Phase C: track spell slots spent. Currently assumes unlimited casts.
 
     if defn.pattern == SpellPattern.AUTO_HIT_DAMAGE:
-        return _evaluate_auto_hit_spell(action, state, actor, defn)
+        result = _evaluate_auto_hit_spell(action, state, actor, defn)
     elif defn.pattern == SpellPattern.SAVE_OR_CONDITION:
-        return _evaluate_condition_spell(action, state, actor, defn)
+        result = _evaluate_condition_spell(action, state, actor, defn)
     elif defn.pattern == SpellPattern.ATTACK_ROLL:
-        return _evaluate_attack_roll_spell(action, state, actor, defn)
+        result = _evaluate_attack_roll_spell(action, state, actor, defn)
     elif defn.pattern == SpellPattern.SAVE_FOR_DAMAGE:
-        return _evaluate_save_damage_spell(action, state, actor, defn)
+        result = _evaluate_save_damage_spell(action, state, actor, defn)
     else:
         return ActionResult(action=action, eligible=False,
                             ineligibility_reason=f"Unimplemented: {defn.pattern}")
+
+    # Casting a hostile spell breaks Hidden condition
+    # (AoN: Hidden — "you become observed" after a hostile action)
+    if result.eligible and "hidden" in actor.conditions:
+        result = ActionResult(
+            action=result.action,
+            outcomes=tuple(
+                ActionOutcome(
+                    probability=o.probability,
+                    hp_changes=o.hp_changes,
+                    position_changes=o.position_changes,
+                    conditions_applied=o.conditions_applied,
+                    conditions_removed={
+                        **o.conditions_removed,
+                        action.actor_name: ("hidden",),
+                    },
+                    reactions_consumed=o.reactions_consumed,
+                    score_delta=o.score_delta,
+                    description=o.description,
+                )
+                for o in result.outcomes
+            ),
+        )
+
+    return result
 
 
 def _evaluate_auto_hit_spell(
