@@ -541,12 +541,26 @@ def _evaluate_pc_strike(
     anthem_dmg_delta = _effective_status_bonus_damage(actor, state) - actor.status_bonus_damage
     hit_dmg += anthem_dmg_delta
 
-    # Apply weakness/resistance if actor has Recalled Knowledge on target
+    # Apply weakness/resistance if actor has Recalled Knowledge on target.
+    # Versatile trait: choose the best damage type per attack.
+    # (AoN: https://2e.aonprd.com/Traits.aspx?ID=724 — "You choose each time you attack")
     if _has_recalled(actor, action.target_name):
-        dmg_type = equipped.weapon.damage_type.name.lower()
-        hit_dmg = max(0.0, hit_dmg
-                      + target.weaknesses.get(dmg_type, 0)
-                      - target.resistances.get(dmg_type, 0))
+        base_type = equipped.weapon.damage_type.name.lower()
+        # Collect all available damage types (base + versatile alternatives)
+        available_types = [base_type]
+        for trait in equipped.weapon.traits:
+            if trait.startswith("versatile_"):
+                alt = trait[len("versatile_"):]
+                type_map = {"p": "piercing", "s": "slashing", "b": "bludgeoning"}
+                if alt in type_map:
+                    available_types.append(type_map[alt])
+        # Pick the damage type with the best W/R outcome
+        best_wr_adjustment = None
+        for dt in available_types:
+            adj = target.weaknesses.get(dt, 0) - target.resistances.get(dt, 0)
+            if best_wr_adjustment is None or adj > best_wr_adjustment:
+                best_wr_adjustment = adj
+        hit_dmg = max(0.0, hit_dmg + (best_wr_adjustment or 0))
 
     deadly = equipped.weapon.deadly_die
     deadly_extra = die_average(deadly) if deadly else 0.0
@@ -1666,11 +1680,19 @@ def evaluate_recall_knowledge(
 
         recall_ev = p_success * (weakness_ev + avoidance_ev)
 
+    # Share knowledge with ALL living party members — in PF2e, the recalling
+    # character communicates what they learn to allies (standard table play).
+    # Each PC gets the recalled tag so their Strike evaluators apply W/R.
+    all_pc_tags: dict[str, tuple[str, ...]] = {}
+    for pc_name, pc_snap in state.pcs.items():
+        if pc_snap.current_hp > 0:
+            all_pc_tags[pc_name] = (tag,)
+
     return ActionResult(
         action=action,
         outcomes=(ActionOutcome(
             probability=1.0,
-            conditions_applied={action.actor_name: (tag,)},
+            conditions_applied=all_pc_tags,
             score_delta=recall_ev,
             description=f"Recall Knowledge: {action.target_name} (EV {recall_ev:.2f})",
         ),),
