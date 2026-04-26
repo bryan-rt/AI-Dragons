@@ -121,6 +121,7 @@ class ActionOutcome:
     conditions_applied: dict[str, tuple[str, ...]] = field(default_factory=dict)
     conditions_removed: dict[str, tuple[str, ...]] = field(default_factory=dict)
     reactions_consumed: dict[str, int] = field(default_factory=dict)
+    score_delta: float = 0.0  # EV from conditions/effects not captured in hp_changes
     description: str = ""
 
 
@@ -1227,6 +1228,7 @@ def evaluate_anthem(
         outcomes=(ActionOutcome(
             probability=1.0,
             conditions_applied={action.actor_name: ("anthem_active",)},
+            score_delta=anthem_ev,
             description=f"Cast Courageous Anthem (EV +{anthem_ev:.2f})",
         ),),
     )
@@ -1312,12 +1314,27 @@ def evaluate_mortar_aim(
         return ActionResult(action=action, eligible=False,
                            ineligibility_reason="Mortar already aimed")
 
+    # Chain credit: estimate LAUNCH payoff so beam doesn't prune mortar line.
+    # Discount 0.3 (additive accumulation — avoid inflating total).
+    # CP7 calibration target.
+    from pf2e.combat_math import SiegeWeapon, expected_aoe_damage, EnemyTarget
+    from pf2e.types import DamageType
+    mortar = SiegeWeapon(name="Light Mortar", damage_die="d6", base_damage_dice=2,
+                         damage_type=DamageType.BLUDGEONING, save_type=SaveType.REFLEX,
+                         aoe_shape="burst", aoe_radius_ft=10, range_increment=120)
+    enemy_targets = [
+        EnemyTarget(name=e.name, ac=e.ac, saves=e.saves)
+        for e in state.enemies.values() if e.current_hp > 0
+    ]
+    chain_credit = expected_aoe_damage(actor.character, mortar, enemy_targets) * 0.3 if enemy_targets else 0.0
+
     return ActionResult(
         action=action,
         outcomes=(ActionOutcome(
             probability=1.0,
             conditions_applied={action.actor_name: ("mortar_aimed",)},
-            description="Aim Light Mortar",
+            score_delta=chain_credit,
+            description=f"Aim Light Mortar (chain credit {chain_credit:.2f})",
         ),),
     )
 
@@ -1339,12 +1356,25 @@ def evaluate_mortar_load(
         return ActionResult(action=action, eligible=False,
                            ineligibility_reason="Mortar already loaded")
 
+    # Chain credit: one step closer to LAUNCH. Higher discount than AIM.
+    from pf2e.combat_math import SiegeWeapon, expected_aoe_damage, EnemyTarget
+    from pf2e.types import DamageType
+    mortar = SiegeWeapon(name="Light Mortar", damage_die="d6", base_damage_dice=2,
+                         damage_type=DamageType.BLUDGEONING, save_type=SaveType.REFLEX,
+                         aoe_shape="burst", aoe_radius_ft=10, range_increment=120)
+    enemy_targets = [
+        EnemyTarget(name=e.name, ac=e.ac, saves=e.saves)
+        for e in state.enemies.values() if e.current_hp > 0
+    ]
+    chain_credit = expected_aoe_damage(actor.character, mortar, enemy_targets) * 0.35 if enemy_targets else 0.0
+
     return ActionResult(
         action=action,
         outcomes=(ActionOutcome(
             probability=1.0,
             conditions_applied={action.actor_name: ("mortar_loaded",)},
-            description="Load Light Mortar",
+            score_delta=chain_credit,
+            description=f"Load Light Mortar (chain credit {chain_credit:.2f})",
         ),),
     )
 
@@ -1480,6 +1510,7 @@ def evaluate_taunt(
                 action.target_name: (taunted_key,),
                 action.actor_name: (taunting_key,),
             },
+            score_delta=taunt_ev,
             description=f"Taunt {action.target_name} (EV +{taunt_ev:.2f})",
         ),),
     )
@@ -1544,6 +1575,7 @@ def evaluate_recall_knowledge(
         outcomes=(ActionOutcome(
             probability=1.0,
             conditions_applied={action.actor_name: (tag,)},
+            score_delta=recall_ev,
             description=f"Recall Knowledge: {action.target_name} (EV {recall_ev:.2f})",
         ),),
     )
@@ -1610,6 +1642,7 @@ def evaluate_hide(
         outcomes=(ActionOutcome(
             probability=1.0,
             conditions_applied={action.actor_name: ("hidden",)},
+            score_delta=hide_ev,
             description=f"Hide (EV {hide_ev:.2f})",
         ),),
     )
@@ -1758,6 +1791,7 @@ def evaluate_aid(
                 action.actor_name: (aiding_tag,),
                 action.target_name: (aided_tag,),
             },
+            score_delta=aid_ev,
             description=f"Aid {action.target_name} (EV {aid_ev:.2f}, discounted)",
         ),),
     )

@@ -367,6 +367,7 @@ class _BeamEntry:
     state: RoundState
     actions: list[Action]
     weight: float  # cumulative branch probability
+    action_ev: float = 0.0  # accumulated evaluator score_delta (conditions, etc.)
 
 
 def beam_search_turn(
@@ -394,7 +395,8 @@ def beam_search_turn(
         for entry in beam:
             # Check if turn already ended
             if entry.actions and entry.actions[-1].type == ActionType.END_TURN:
-                sc = score_state(entry.state, initial)
+                hp_sc = score_state(entry.state, initial)
+                sc = hp_sc + entry.action_ev
                 sc = -sc if negate_score else sc
                 next_beam.append((sc * entry.weight, entry))
                 continue
@@ -412,6 +414,10 @@ def beam_search_turn(
                 result = evaluate_action(action, entry.state)
                 if not result.eligible:
                     continue
+                # Accumulate evaluator score_delta (condition EV, chain credit)
+                action_ev_delta = sum(
+                    o.probability * o.score_delta for o in result.outcomes
+                )
                 child_states = apply_action_result(
                     result, entry.state, initial, config,
                 )
@@ -422,7 +428,9 @@ def beam_search_turn(
                     )
                     new_actions = entry.actions + [action]
                     new_weight = entry.weight * weight
-                    sc = score_state(child_state, initial)
+                    new_action_ev = entry.action_ev + action_ev_delta
+                    hp_sc = score_state(child_state, initial)
+                    sc = hp_sc + new_action_ev
                     sc = -sc if negate_score else sc
                     next_beam.append((
                         sc * new_weight,
@@ -430,6 +438,7 @@ def beam_search_turn(
                             state=child_state,
                             actions=new_actions,
                             weight=new_weight,
+                            action_ev=new_action_ev,
                         ),
                     ))
 
@@ -454,11 +463,12 @@ def beam_search_turn(
             score_breakdown=breakdown,
         )
 
-    best = max(beam, key=lambda e: score_state(e.state, initial) * e.weight
+    best = max(beam, key=lambda e:
+               (score_state(e.state, initial) + e.action_ev) * e.weight
                if not negate_score
-               else -score_state(e.state, initial) * e.weight)
+               else -(score_state(e.state, initial) + e.action_ev) * e.weight)
     breakdown = compute_breakdown(best.state, initial)
-    sc = breakdown.total if not negate_score else -breakdown.total
+    sc = (breakdown.total + best.action_ev) if not negate_score else -(breakdown.total + best.action_ev)
 
     logger.info(
         f"beam_search_turn({actor_name}): best score={sc:.2f}, "
