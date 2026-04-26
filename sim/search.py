@@ -609,8 +609,8 @@ def format_recommendation(rec: RoundRecommendation) -> str:
 def _action_label(action: Action, state: RoundState | None = None) -> str:
     """Human-readable label for an Action.
 
-    If state is provided, ACTIVATE_TACTIC labels are enriched with
-    the responding squadmate and action (e.g., "Rook Strikes Bandit1").
+    Includes target where applicable. ACTIVATE_TACTIC labels are enriched
+    with the responding squadmate and action.
     """
     if action.type == ActionType.END_TURN:
         return "End Turn"
@@ -638,6 +638,18 @@ def _action_label(action: Action, state: RoundState | None = None) -> str:
         name = defn.name if defn else action.tactic_name
         cost = f" ({action.action_cost}a)" if action.action_cost > 1 else ""
         return f"Cast {name}{cost} vs {action.target_name}"
+    if action.type == ActionType.RECALL_KNOWLEDGE:
+        return f"Recall Knowledge vs {action.target_name}"
+    if action.type == ActionType.TAUNT:
+        return f"Taunt {action.target_name}"
+    if action.type == ActionType.HIDE:
+        return "Hide (stealth)"
+    if action.type == ActionType.ANTHEM:
+        return "Courageous Anthem (+1 atk/dmg to party)"
+    if action.type == ActionType.SNEAK:
+        return f"Sneak to {action.target_position}"
+    if action.type == ActionType.AID:
+        return f"Aid {action.target_name}"
     return action.type.name
 
 

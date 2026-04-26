@@ -423,7 +423,8 @@ def format_combat_solution(solution: CombatSolution) -> str:
         lines.append("")
         for turn in round_log.turns:
             prefix = "[ENEMY] " if turn.is_enemy else ""
-            lines.append(f"[{prefix}{turn.combatant_name}]")
+            lines.append(f"[{prefix}{turn.combatant_name}]  "
+                         f"(Turn EV: {turn.score_delta:.1f})")
             for i, action in enumerate(turn.actions, 1):
                 lines.append(f"  {i}. {action}")
             # HP summary for living combatants

@@ -1736,13 +1736,37 @@ def evaluate_hide(
     avg_perc_dc = sum(10 + e.perception_bonus for e in living_enemies) / len(living_enemies)
     p_success = _d20_success_probability(stealth, int(avg_perc_dc))
 
-    # Score: off-guard attack bonus + flat check defense
-    remaining_strikes = min(actor.actions_remaining - 1, 2)
+    # Score: attack bonus from Hidden (+2 to attack rolls) + flat check defense.
+    # Only count attack bonus if actor will plausibly use attack-roll actions.
+    # Auto-hit spells (Force Barrage) and save spells (Fear) don't benefit.
+    # (AoN: Hidden gives +2 circumstance bonus to attack rolls only)
+    remaining_actions = min(actor.actions_remaining - 1, 2)
+
+    # Count how many remaining actions would benefit from hidden attack bonus:
+    # melee strikes (if enemies in reach) and attack-roll spells (Needle Darts)
+    attack_roll_actions = 0
+    if remaining_actions > 0:
+        has_melee_target = any(
+            _grid_distance_ft(actor.position, e.position) <= melee_reach_ft(actor.character)
+            for e in state.enemies.values() if e.current_hp > 0
+        )
+        if has_melee_target:
+            attack_roll_actions = remaining_actions
+        else:
+            # Check if actor has attack-roll spells (Attack trait)
+            from pf2e.spells import SPELL_REGISTRY, SpellPattern
+            for slug in actor.character.known_spells:
+                defn = SPELL_REGISTRY.get(slug)
+                if defn and defn.pattern == SpellPattern.ATTACK_ROLL:
+                    # Each attack-roll spell costs defn.action_cost actions
+                    attack_roll_actions = remaining_actions // defn.action_cost
+                    break
+
     avg_dmg = 5.0
     if actor.character.equipped_weapons:
         avg_dmg = damage_avg(actor, actor.character.equipped_weapons[0])  # type: ignore[arg-type]
 
-    off_guard_ev = remaining_strikes * 0.10 * avg_dmg
+    off_guard_ev = attack_roll_actions * 0.10 * avg_dmg
     # DC 11 flat check: ~45% chance enemies miss
     incoming_attacks = sum(e.num_attacks_per_turn for e in living_enemies)
     avg_incoming = sum(
