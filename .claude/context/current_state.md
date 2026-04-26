@@ -1,42 +1,49 @@
 # Current State
 
-**Last updated:** CP7 complete.
+**Last updated:** Phase B+.1 complete.
 
 ## Latest Test Count
 
-**444 passing.**
+**512 passing.**
 
 ## Active Work
 
-**CP7 — Validation and Calibration** (complete).
+**Phase B+.1 — Session Cache Infrastructure and Analysis** (complete).
 
 ### Completed
-- Survival bonus: flat 15 per surviving PC + 0.5 × HP (was only 0.5 × HP)
-- Threat-weighted Taunt/Raise Shield EV (not just adjacent enemies)
-- score_delta added to Create a Diversion, Demoralize, Feint, Raise Shield
-- Recall Knowledge party-wide damage type advantage
-- Scenario 2 anthem_active=false (Dalai casts as action)
-- Verified: hidden bonus doesn't leak into reaction Strikes
-- Strike Hard EV 8.55 (12th consecutive verification)
+- Session-scoped SQLite cache for Rule Element data
+- GitHub fetcher (v14-dev branch, flat-path packs only)
+- Two-phase session initializer (local extraction + GitHub supplement)
+- Rule Element analysis report generator
+- CLI integration (--init-session, --characters, --cache flags)
+- 34 new tests (all network mocked, temp paths for cache)
+- EV 7.65 (14th verification — no engine changes)
+
+### Analysis Findings
+- 115 unique items cached from 4 characters
+- 36 items have Rule Elements (92 total REs, 15 distinct kinds)
+- 28.3% combat-relevant (26 REs), 71.7% creation-time/utility (66 REs)
+- Top combat kinds: ActiveEffectLike (12), AdjustModifier (4), FlatModifier (4)
 
 ## Known Regression Anchors
 
-- **EV 8.55** — Strike Hard. Verified 12 times.
-- **Scenario 1** — Victory in 1 round (trivial), Score ~245
-- **Scenario 2 seed 42** — Victory in 2 rounds, Score ~250
-- **Scenario 2 seed 7** — Victory in 2 rounds, Score ~297
+- **EV 7.65** — Strike Hard (Rook Earthbreaker). 14th verification.
 
-## Known Calibration Targets (CP9+)
+## Handler Priority (D29)
 
-- Difficulty rating thresholds (round-count based only)
-- Mortar chain credit discount (0.3/0.35 heuristic)
-- Skill-action filtering threshold (not yet implemented — global 25% planned)
-- Per-round re-branching (not yet implemented — planned for CP8+)
-- Survival bonus weights (15 per survivor + 0.5×HP, verify with more scenarios)
+| Priority | Kind | Count | Cumulative |
+|---|---|---|---|
+| 1 | ActiveEffectLike | 12 | 46% |
+| 2 | AdjustModifier | 4 | 62% |
+| 3 | FlatModifier | 4 | 77% |
+| 4 | Strike | 3 | 88% |
+| 5 | SubstituteRoll | 1 | 92% |
+| 6 | Aura | 1 | 96% |
+| 7 | Resistance | 1 | 100% |
 
 ## Next Checkpoint
 
-CP8 — Level advancement (L2-L5), feat progression
+Phase B+.2 — Handler registry design (based on analysis report)
 
 ## Links
 

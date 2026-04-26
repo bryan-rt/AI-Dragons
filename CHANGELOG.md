@@ -1,5 +1,59 @@
 # Changelog
 
+## [Phase B+.1] — 2026-04-26
+### Added
+- `sim/catalog/session_cache.py` — session-scoped SQLite cache for Rule Elements
+- `sim/catalog/github_fetcher.py` — GitHub fetcher (v14-dev branch, flat paths only)
+- `sim/catalog/session_init.py` — two-phase session initializer (local + GitHub)
+- `tools/analyze_rule_elements.py` — Rule Element analysis and report generator
+- `--init-session`, `--characters`, `--cache` CLI flags
+- D29: Handler priority order (ActiveEffectLike → AdjustModifier → FlatModifier
+  → Strike → SubstituteRoll → Aura → Resistance)
+
+### Architecture
+- Local-first: character JSONs are primary Rule Element source (no network needed)
+- GitHub supplement: bestiary/flat-path items fetched on demand
+- 115 unique items cached from 4 characters (36 with Rule Elements)
+- 92 total Rule Elements across 15 distinct kinds
+- 28.3% combat-relevant (26 of 92), 71.7% creation-time/utility (66 of 92)
+
+### Regressions
+- EV 7.65 (14th verification — no engine changes)
+
+## [Phase B] — 2026-04-26
+
+### Added
+- `sim/importers/foundry.py` — Foundry VTT pf2e actor JSON importer
+- `sim/importers/__init__.py`
+- `characters/fvtt-aetregan.json`, `fvtt-rook.json`, `fvtt-dalai.json`, `fvtt-erisen.json`
+- `WeaponGroup.AXE` added to `pf2e/types.py`
+- `tests/test_foundry_importer.py` — 34 new tests
+
+### Changed
+- `sim/party.py` factories now call `import_foundry_actor()` for all four characters
+- Aetregan: WIS 10, CHA 12 (was WIS 12, CHA 10 — alternate ancestry boosts, JSON authoritative)
+- Aetregan: Deception now trained (was untrained — JSON authoritative)
+- Aetregan: Nature now untrained (was trained — JSON authoritative)
+- Aetregan: Deity Lore removed (not in Foundry export)
+- Rook: Primary weapon Earthbreaker d6 bludgeoning (was Longsword d8 slashing)
+- Rook: 4 weapons imported (Earthbreaker, Light Hammer, Barricade Buster, Bottled Lightning)
+- Rook: Perception trained (was expert — Foundry Guardian class item)
+- Rook: ancestry_hp 8 / class_hp 12 (was 10/10 — same total HP 23)
+- Rook: Skills now Diplomacy, Crafting, Survival, Medicine (was Athletics, Intimidation, Society, Crafting)
+- Dalai: Rapier Pistol d4 piercing replaces Rapier d6 piercing
+- Dalai: has_soothe=False (Soothe not in Foundry spell repertoire)
+- Dalai: has Buckler shield
+- Erisen: Dueling Pistol d6 piercing replaces Dagger d4 piercing
+- Erisen: Leather Armor AC+1 (was Studded Leather AC+2)
+- Erisen: Reflex trained / Will expert (was Reflex expert / Will trained)
+- **Strike Hard EV: 8.55 → 7.65** (Rook Earthbreaker d6 vs old Longsword d8)
+
+### Known Phase B+ deferred items (flagged in code comments)
+- Combination weapon dual-mode (Dalai's Rapier Pistol ranged mode)
+- Two-hand damage die upgrade (Rook's Earthbreaker d6→d10)
+- Gun traits: concussive, fatal (Erisen's Dueling Pistol, Barricade Buster)
+- class_dc_rank sourced from catalog (currently hard-coded TRAINED)
+
 ## [CP7] — 2026-04-25
 ### Fixed
 - Survival bonus underweighted: added flat 15 per surviving PC + 0.5 × remaining HP.
