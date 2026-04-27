@@ -442,6 +442,78 @@ def _extract_known_spells(items: list[dict]) -> dict[str, int]:
     return known
 
 
+def _resolve_initially_held(items: list[dict]) -> tuple[str, ...]:
+    """Resolve which items are initially held, respecting 2-hand limit.
+
+    Foundry can store inconsistent handsHeld totals (>2). Resolve by:
+    1. Filter to items with handsHeld > 0 (weapons and shields)
+    2. For weapons, use min(handsHeld, usage_hands) — a one-handed weapon
+       held two-handed in Foundry uses 1 hand when conflict exists
+    3. Sort by effective hands ascending (one-handed items first)
+    4. Greedily allocate up to 2 total hand-slots
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2149)
+    """
+    candidates: list[tuple[str, int]] = []
+    for item in items:
+        itype = item.get("type", "")
+        if itype not in ("weapon", "shield"):
+            continue
+        hands_held = item.get("system", {}).get("equipped", {}).get("handsHeld", 0)
+        if hands_held <= 0:
+            continue
+        # For weapons: use the weapon's usage-based hands (1 or 2) as minimum.
+        # A one-handed weapon (usage=held-in-one-hand) can be held one-handed
+        # even if Foundry shows handsHeld=2 (player was two-handing it).
+        if itype == "weapon":
+            usage = item.get("system", {}).get("usage", {}).get("value", "held-in-one-hand")
+            usage_hands = 2 if "two-hands" in usage else 1
+            effective_hands = min(hands_held, usage_hands)
+        else:
+            effective_hands = hands_held
+        candidates.append((item["name"], effective_hands))
+
+    candidates.sort(key=lambda x: x[1])  # one-handed first
+    held: list[str] = []
+    hands_remaining = 2
+    for name, hands_needed in candidates:
+        if hands_needed <= hands_remaining:
+            held.append(name)
+            hands_remaining -= hands_needed
+    return tuple(held)
+
+
+def _extract_starting_resources(items: list[dict]) -> dict[str, int]:
+    """Extract starting expendable resources from spellcasting entries.
+
+    Reads system.slots on spellcastingEntry items (spontaneous casters).
+    E.g. slot1.max=2 → {"spell_slot_1": 2}.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2224)
+    """
+    resources: dict[str, int] = {}
+    for item in items:
+        if item.get("type") != "spellcastingEntry":
+            continue
+        prepared = item.get("system", {}).get("prepared", {})
+        # Only spontaneous casters have slot-based tracking
+        if isinstance(prepared, dict):
+            prep_value = prepared.get("value", "")
+        else:
+            prep_value = str(prepared)
+        if prep_value != "spontaneous":
+            continue
+        slots = item.get("system", {}).get("slots", {})
+        for key, slot_data in slots.items():
+            if not isinstance(slot_data, dict):
+                continue
+            max_slots = slot_data.get("max", 0)
+            if max_slots > 0:
+                # key is "slot1", "slot2", etc. → "spell_slot_1", "spell_slot_2"
+                rank_str = key.replace("slot", "")
+                if rank_str.isdigit():
+                    resources[f"spell_slot_{rank_str}"] = max_slots
+    return resources
+
+
 def _derive_speed(ancestry_item: dict, feat_names: set[str]) -> int:
     """Derive speed from ancestry base speed + Nimble Elf (+5 if present).
 
@@ -531,6 +603,10 @@ def import_foundry_actor(path: str) -> Character:
     # Known combat spells (CP5.4 spell chassis)
     known_spells = _extract_known_spells(items)
 
+    # Hand state and expendable resources (CP7.2)
+    initially_held = _resolve_initially_held(items)
+    starting_resources = _extract_starting_resources(items)
+
     return Character(
         name=data["name"],
         level=level,
@@ -554,5 +630,7 @@ def import_foundry_actor(path: str) -> Character:
         has_courageous_anthem=has_courageous_anthem,
         has_soothe=has_soothe,
         known_spells=known_spells,
+        initially_held=initially_held,
+        starting_resources=starting_resources,
         **feat_flags,
     )

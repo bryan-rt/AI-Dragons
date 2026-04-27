@@ -53,13 +53,15 @@ def _pc_candidates(
     if actor.actions_remaining <= 0:
         return [_end_turn(actor_name)]
 
-    # STRIKE: one per (weapon, living enemy in reach)
+    # STRIKE: one per (held weapon, living enemy in reach) — CP7.2: only held weapons
     reach = melee_reach_ft(actor.character)
     for en_name, enemy in state.enemies.items():
         if enemy.current_hp <= 0:
             continue
         if is_within_reach(actor.position, enemy.position, reach):
             for eq in actor.character.equipped_weapons:
+                if eq.weapon.name not in actor.held_weapons:
+                    continue  # Must draw via INTERACT first
                 if eq.weapon.is_melee:
                     actions.append(Action(
                         type=ActionType.STRIKE, actor_name=actor_name,
@@ -67,9 +69,11 @@ def _pc_candidates(
                         weapon_name=eq.weapon.name,
                     ))
 
-    # TRIP / DISARM: one per living enemy in melee reach (if weapon has trait)
-    has_trip = any("trip" in eq.weapon.traits for eq in actor.character.equipped_weapons)
-    has_disarm = any("disarm" in eq.weapon.traits for eq in actor.character.equipped_weapons)
+    # TRIP / DISARM: only if a HELD weapon has the trait — CP7.2
+    held_weapons = [eq for eq in actor.character.equipped_weapons
+                    if eq.weapon.name in actor.held_weapons]
+    has_trip = any("trip" in eq.weapon.traits for eq in held_weapons)
+    has_disarm = any("disarm" in eq.weapon.traits for eq in held_weapons)
     for en_name, enemy in state.enemies.items():
         if enemy.current_hp <= 0:
             continue
@@ -252,12 +256,16 @@ def _pc_candidates(
                 ))
 
     # CAST_SPELL: for each known spell in SPELL_REGISTRY (CP5.4)
+    # CP7.2: check spell slot availability before generating candidates
     from pf2e.spells import SPELL_REGISTRY
     for slug, rank in actor.character.known_spells.items():
         defn = SPELL_REGISTRY.get(slug)
         if defn is None:
             continue
-        # Determine valid action costs
+        if defn.uses_spell_slot:
+            slot_key = f"spell_slot_{defn.spell_slot_rank}"
+            if actor.resources.get(slot_key, 0) <= 0:
+                continue  # Slot depleted
         if defn.scales_with_actions:
             costs = [c for c in range(1, 4) if c <= actor.actions_remaining]
         else:
@@ -275,6 +283,32 @@ def _pc_candidates(
                     target_name=en_name,
                     tactic_name=slug,
                 ))
+
+    # INTERACT: draw a stowed weapon when a free hand is available (CP7.2)
+    if actor.actions_remaining >= 1:
+        hands_free = 2 - len(actor.held_weapons)
+        for eq in actor.character.equipped_weapons:
+            if eq.weapon.name in actor.held_weapons:
+                continue
+            hands_needed = eq.weapon.hands
+            if hands_free >= hands_needed:
+                actions.append(Action(
+                    type=ActionType.INTERACT, actor_name=actor_name,
+                    action_cost=1, weapon_name=eq.weapon.name,
+                ))
+
+    # RELEASE: free action to drop a held item (enables two-hand grip) (CP7.2)
+    # Only generate when releasing enables a two-hand damage upgrade
+    if len(actor.held_weapons) == 2:
+        for item_name in actor.held_weapons:
+            remaining = [w for w in actor.held_weapons if w != item_name]
+            for eq in actor.character.equipped_weapons:
+                if eq.weapon.name in remaining:
+                    if any(t.startswith("two_hand_") for t in eq.weapon.traits):
+                        actions.append(Action(
+                            type=ActionType.RELEASE, actor_name=actor_name,
+                            action_cost=0, weapon_name=item_name,
+                        ))
 
     # STAND: if prone
     if actor.prone and actor.actions_remaining >= 1:

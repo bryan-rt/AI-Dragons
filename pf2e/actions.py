@@ -80,6 +80,9 @@ class ActionType(Enum):
     STAND = auto()             # Stand up from Prone (1 action)
     # CP5.4: spell chassis
     CAST_SPELL = auto()        # Generic spell cast; slug in tactic_name
+    # CP7.2: hand state
+    INTERACT = auto()          # Draw/stow weapon (1 action)
+    RELEASE = auto()           # Release held item (free action, 0 cost)
 
 
 @dataclass(frozen=True)
@@ -125,6 +128,13 @@ class ActionOutcome:
     reactions_consumed: dict[str, int] = field(default_factory=dict)
     score_delta: float = 0.0  # EV from conditions/effects not captured in hp_changes
     description: str = ""
+    # Resource changes (spell slots, consumables). Maps resource_key → delta.
+    resource_changes: dict[str, int] = field(default_factory=dict)
+    # PC whose resources to update (empty = no resource change).
+    actor_name: str = ""
+    # Hand state changes for INTERACT/RELEASE actions.
+    held_weapons_add: tuple[str, ...] = ()     # Items drawn into hands
+    held_weapons_remove: tuple[str, ...] = ()  # Items released from hands
 
 
 @dataclass(frozen=True)
@@ -384,6 +394,10 @@ def evaluate_raise_shield(
     if actor.shield_raised:
         return ActionResult(action=action, eligible=False,
                            ineligibility_reason="Shield already raised")
+    # Must be holding the shield to raise it (CP7.2 hand state)
+    if actor.character.shield.name not in actor.held_weapons:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="Shield not held — use INTERACT to draw")
 
     # Threat-estimated danger: all living enemies within one Stride (30 ft)
     # can potentially target this actor. +2 AC ≈ 10% hit reduction.
@@ -537,6 +551,21 @@ def _evaluate_pc_strike(
     outcomes_d20 = enumerate_d20_outcomes(bonus, effective_ac)
 
     hit_dmg = damage_avg(actor, equipped)  # type: ignore[arg-type]
+
+    # Two-hand damage die upgrade: if weapon has two_hand_dN trait and is the
+    # only item in held_weapons (no shield/second weapon), use the larger die.
+    # (AoN: https://2e.aonprd.com/Traits.aspx?ID=718)
+    for trait in equipped.weapon.traits:
+        if trait.startswith("two_hand_"):
+            two_hand_die = trait.split("_", 2)[2]  # "d10" from "two_hand_d10"
+            if (equipped.weapon.name in actor.held_weapons
+                    and len(actor.held_weapons) == 1):
+                # Upgrade: replace base die average with two-hand die average
+                base_avg = die_average(equipped.weapon.damage_die)
+                upgraded_avg = die_average(two_hand_die)
+                hit_dmg += (upgraded_avg - base_avg) * equipped.total_damage_dice
+            break
+
     # Apply mid-round Anthem damage bonus
     anthem_dmg_delta = _effective_status_bonus_damage(actor, state) - actor.status_bonus_damage
     hit_dmg += anthem_dmg_delta
@@ -602,13 +631,9 @@ def _evaluate_pc_strike(
             kill_proximity = 1.0 - hp_frac
             focus_bonus = kill_proximity * avg_enemy_dmg * target.num_attacks_per_turn * 0.3
 
-    # Weapon switch penalty: nudge against switching weapons mid-turn on same
-    # target when the switch provides only marginal MAP benefit (agile: -4 vs -5).
-    weapon_switch_penalty = 0.0
-    if actor.map_count > 0:
-        weapon_switch_penalty = 0.5
+    # CP7.1 weapon_switch_penalty removed — superseded by INTERACT action cost (CP7.2)
 
-    if focus_bonus > 0 or weapon_switch_penalty > 0:
+    if focus_bonus > 0:
         outcomes = [
             ActionOutcome(
                 probability=o.probability,
@@ -617,7 +642,7 @@ def _evaluate_pc_strike(
                 conditions_applied=o.conditions_applied,
                 conditions_removed=o.conditions_removed,
                 reactions_consumed=o.reactions_consumed,
-                score_delta=o.score_delta + focus_bonus - weapon_switch_penalty,
+                score_delta=o.score_delta + focus_bonus,
                 description=o.description,
             )
             for o in outcomes
@@ -2032,6 +2057,82 @@ def evaluate_stand(
 
 
 # ---------------------------------------------------------------------------
+# Hand state: INTERACT and RELEASE (CP7.2)
+# ---------------------------------------------------------------------------
+
+def evaluate_interact(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Draw a stowed weapon. Costs 1 action.
+
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2151 — Interact)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="Actor not found")
+
+    weapon_name = action.weapon_name
+    weapon_exists = any(
+        eq.weapon.name == weapon_name for eq in actor.character.equipped_weapons
+    )
+    if not weapon_exists:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason=f"{weapon_name!r} not equipped")
+    if weapon_name in actor.held_weapons:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason=f"{weapon_name} already held")
+
+    eq = next(e for e in actor.character.equipped_weapons if e.weapon.name == weapon_name)
+    hands_needed = eq.weapon.hands
+    hands_free = 2 - len(actor.held_weapons)
+    if hands_free < hands_needed:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason=(
+                                f"Drawing {weapon_name} needs {hands_needed} hand(s); "
+                                f"only {hands_free} free"
+                            ))
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            held_weapons_add=(weapon_name,),
+            actor_name=action.actor_name,
+            description=f"Draw {weapon_name}",
+        ),),
+    )
+
+
+def evaluate_release(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """Release a held item. Free action (0 cost, no reactions).
+
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2150 — Release)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="Actor not found")
+
+    item_name = action.weapon_name
+    if item_name not in actor.held_weapons:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason=f"{item_name} not currently held")
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            held_weapons_remove=(item_name,),
+            actor_name=action.actor_name,
+            description=f"Release {item_name}",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Spell chassis evaluator (CP5.4)
 # ---------------------------------------------------------------------------
 
@@ -2062,7 +2163,15 @@ def evaluate_spell(
         return ActionResult(action=action, eligible=False,
                             ineligibility_reason=f"Spell {slug!r} not known")
 
-    # Phase C: track spell slots spent. Currently assumes unlimited casts.
+    # Spell slot resource check (CP7.2)
+    if defn.uses_spell_slot:
+        slot_key = f"spell_slot_{defn.spell_slot_rank}"
+        remaining = actor.resources.get(slot_key, 0)
+        if remaining <= 0:
+            return ActionResult(
+                action=action, eligible=False,
+                ineligibility_reason=f"No {slot_key} remaining",
+            )
 
     if defn.pattern == SpellPattern.AUTO_HIT_DAMAGE:
         result = _evaluate_auto_hit_spell(action, state, actor, defn)
@@ -2097,6 +2206,30 @@ def evaluate_spell(
                     reactions_consumed=o.reactions_consumed,
                     score_delta=o.score_delta - hidden_penalty,
                     description=o.description,
+                )
+                for o in result.outcomes
+            ),
+        )
+
+    # Apply spell slot cost to all outcomes
+    if result.eligible and defn.uses_spell_slot:
+        slot_key = f"spell_slot_{defn.spell_slot_rank}"
+        result = ActionResult(
+            action=result.action,
+            outcomes=tuple(
+                ActionOutcome(
+                    probability=o.probability,
+                    hp_changes=o.hp_changes,
+                    position_changes=o.position_changes,
+                    conditions_applied=o.conditions_applied,
+                    conditions_removed=o.conditions_removed,
+                    reactions_consumed=o.reactions_consumed,
+                    score_delta=o.score_delta,
+                    description=o.description,
+                    resource_changes={slot_key: -1},
+                    actor_name=action.actor_name,
+                    held_weapons_add=o.held_weapons_add,
+                    held_weapons_remove=o.held_weapons_remove,
                 )
                 for o in result.outcomes
             ),
@@ -2368,6 +2501,9 @@ _ACTION_EVALUATORS: dict[ActionType, Callable[..., ActionResult]] = {
     ActionType.STAND: evaluate_stand,
     # CP5.4: spell chassis
     ActionType.CAST_SPELL: evaluate_spell,
+    # CP7.2: hand state
+    ActionType.INTERACT: evaluate_interact,
+    ActionType.RELEASE: evaluate_release,
 }
 
 

@@ -55,6 +55,14 @@ class CombatantSnapshot:
     # Tracks rounds/turns remaining for time-limited conditions.
     # Encounter-duration conditions are NOT tracked here.
 
+    # Hand state — weapon/shield names currently held (max 2 hands).
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2149)
+    held_weapons: tuple[str, ...] = ()
+
+    # Expendable resources (spell slots, consumables).
+    # Maps resource_key → remaining uses. E.g. {"spell_slot_1": 2}.
+    resources: dict[str, int] = field(default_factory=dict)
+
     @classmethod
     def from_combatant_state(cls, state: CombatantState) -> CombatantSnapshot:
         """Construct a snapshot from a live CombatantState.
@@ -85,6 +93,8 @@ class CombatantSnapshot:
                 {"mortar_deployed"} if state.character.has_light_mortar
                 else set()
             ),
+            held_weapons=state.character.initially_held,
+            resources=dict(state.character.starting_resources),
         )
 
 

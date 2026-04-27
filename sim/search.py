@@ -211,6 +211,29 @@ def apply_outcome_to_state(
         elif name in result.enemies:
             new_conds = result.enemies[name].conditions - set(conds)
             result = result.with_enemy_update(name, conditions=new_conds)
+    # Resource changes (spell slots, consumables)
+    if outcome.resource_changes and outcome.actor_name and outcome.actor_name in result.pcs:
+        pc = result.pcs[outcome.actor_name]
+        new_resources = dict(pc.resources)
+        for key, delta in outcome.resource_changes.items():
+            new_resources[key] = max(0, new_resources.get(key, 0) + delta)
+        result = result.with_pc_update(outcome.actor_name, resources=new_resources)
+
+    # Hand state changes (INTERACT draw / RELEASE)
+    if outcome.actor_name and outcome.actor_name in result.pcs:
+        pc = result.pcs[outcome.actor_name]
+        if outcome.held_weapons_add or outcome.held_weapons_remove:
+            new_held = list(pc.held_weapons)
+            for item in outcome.held_weapons_remove:
+                if item in new_held:
+                    new_held.remove(item)
+            for item in outcome.held_weapons_add:
+                if item not in new_held:
+                    new_held.append(item)
+            result = result.with_pc_update(
+                outcome.actor_name, held_weapons=tuple(new_held),
+            )
+
     # Anthem activation: if any PC's conditions_applied contains "anthem_active",
     # set the round-level anthem_active flag on RoundState.
     # (AoN: https://2e.aonprd.com/Spells.aspx — Courageous Anthem)
@@ -642,6 +665,10 @@ def _action_label(action: Action, state: RoundState | None = None) -> str:
         return f"Recall Knowledge vs {action.target_name}"
     if action.type == ActionType.TAUNT:
         return f"Taunt {action.target_name}"
+    if action.type == ActionType.INTERACT:
+        return f"Draw {action.weapon_name}"
+    if action.type == ActionType.RELEASE:
+        return f"Release {action.weapon_name} (free)"
     if action.type == ActionType.HIDE:
         return "Hide (stealth)"
     if action.type == ActionType.ANTHEM:

@@ -591,6 +591,7 @@ class TestDispatcher:
             ActionType.RECALL_KNOWLEDGE, ActionType.HIDE,
             ActionType.SNEAK, ActionType.SEEK, ActionType.AID,
             ActionType.STAND, ActionType.CAST_SPELL,
+            ActionType.INTERACT, ActionType.RELEASE,
         }
         assert set(_ACTION_EVALUATORS.keys()) == expected
 

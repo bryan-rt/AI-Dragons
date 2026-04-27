@@ -83,8 +83,17 @@ class Character:
 
     # Known combat spells (slug → rank). Populated by importer from SPELL_REGISTRY.
     # Rank 0 = cantrip (unlimited), rank 1+ = spell slot required.
-    # Phase C: track spell slots spent per combat.
     known_spells: dict[str, int] = field(default_factory=dict)
+
+    # Hand state at combat start — weapon/shield names currently held.
+    # Derived from Foundry handsHeld > 0. Max 2 hands total.
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2149)
+    initially_held: tuple[str, ...] = ()
+
+    # Starting expendable resources per encounter.
+    # Maps resource_key → quantity. E.g. {"spell_slot_1": 2}.
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2224 — Spontaneous spells)
+    starting_resources: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
