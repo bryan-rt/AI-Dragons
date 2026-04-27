@@ -908,27 +908,37 @@ def evaluate_demoralize(
     crit_f = outcomes_d20.critical_failure / 20
 
     # Frightened EV: -N to all enemy rolls × remaining attacks × avg_damage × 0.05
+    # Account for existing frightened level — only the IMPROVEMENT matters.
     if target.damage_dice and "d" in target.damage_dice:
         parts = target.damage_dice.split("d", 1)
         avg_enemy_dmg = int(parts[0]) * die_average(f"d{parts[1]}") + target.damage_bonus
     else:
         avg_enemy_dmg = float(target.damage_bonus)
-    frightened_1_ev = target.num_attacks_per_turn * avg_enemy_dmg * 0.05  # -1 to rolls
-    frightened_2_ev = frightened_1_ev * 2  # -2 to rolls
+    per_level_ev = target.num_attacks_per_turn * avg_enemy_dmg * 0.05
+
+    # Current frightened level on the target
+    current_frightened = max(
+        (int(c.split("_")[1]) for c in target.conditions
+         if c.startswith("frightened_")),
+        default=0,
+    )
+    # Only the increase over current level has value
+    frightened_1_gain = max(0, 1 - current_frightened) * per_level_ev
+    frightened_2_gain = max(0, 2 - current_frightened) * per_level_ev
 
     outcomes: list[ActionOutcome] = []
     if crit_s > 0:
         outcomes.append(ActionOutcome(
             probability=crit_s,
             conditions_applied={action.target_name: ("frightened_2",)},
-            score_delta=frightened_2_ev,
+            score_delta=frightened_2_gain,
             description=f"Crit success: {action.target_name} Frightened 2",
         ))
     if success > 0:
         outcomes.append(ActionOutcome(
             probability=success,
             conditions_applied={action.target_name: ("frightened_1",)},
-            score_delta=frightened_1_ev,
+            score_delta=frightened_1_gain,
             description=f"Success: {action.target_name} Frightened 1",
         ))
     if failure > 0:
@@ -944,7 +954,7 @@ def evaluate_demoralize(
                 action.target_name: ("demoralize_immune",),
                 action.actor_name: ("frightened_1",),
             },
-            score_delta=-frightened_1_ev,  # actor gets frightened = negative
+            score_delta=-per_level_ev,  # actor gets frightened = negative
             description=f"Crit failure: immune + {action.actor_name} Frightened 1",
         ))
     if not outcomes:
