@@ -30,8 +30,7 @@ Created `pf2e/rolls.py` (RollType, FortuneState, flat_check) and
 
 ## Known Bugs (Fixed by CP10)
 
-- **Rook Demoralize/Fear:** Engine offers and evaluates these against Rook (Automaton) as if
-  they work. Automaton has mental/emotion immunity. Fix is CP10.2.
+- **Documentation error resolved (Pass 1.5):** Rook has no immunity tags. Demoralize/Fear behavior is correct.
 - **Flourish not tracked:** Beam can recommend 2 Flourish actions/turn. Fix is CP10.2.
 - **Cover+Raise Shield stacking:** Both give +2 circumstance AC; correct is highest only = +2.
   Fix is CP10.3.

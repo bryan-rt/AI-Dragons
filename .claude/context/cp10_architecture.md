@@ -12,7 +12,7 @@ CP10 is a full architectural rebuild of the `pf2e/` rules engine around nine seq
 
 ## Bugs Fixed by CP10
 
-1. **Rook immune to Demoralize/Fear (CP10.2)** — Automaton ancestry has `{mental, emotion, death_effects, disease, healing, nonlethal_attacks, paralyzed, poison, sleep}` immunities. Currently engine offers Demoralize and Fear against Rook and evaluates them as if they work. Fix: `immunity_tags: frozenset[str]` on `Character`, wired into evaluation.
+1. **~~Rook immune to Demoralize/Fear~~ (resolved Pass 1.5)** — Automaton Constructed Body waives construct immunities. Rook has `immunity_tags=frozenset()`. Engine behavior for Demoralize/Fear against Rook was correct all along. (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=48)
 
 2. **Flourish completely untracked (CP10.2)** — Beam can recommend 2 Flourish actions/turn. Illegal under PF2e rules. Fix: `used_flourish_this_turn: bool` on `CombatantSnapshot`.
 
@@ -148,11 +148,10 @@ New field on `Character`:
 immunity_tags: frozenset[str] = field(default_factory=frozenset)
 ```
 
-Rook's immunity_tags (from Automaton ancestry):
-```python
-frozenset({"mental", "emotion", "death_effects", "disease",
-           "healing", "nonlethal_attacks", "paralyzed", "poison", "sleep"})
-```
+Automaton Constructed Body waives construct immunities.
+Rook has `immunity_tags=frozenset()`. Engine behavior
+for Demoralize/Fear against Rook was correct all along.
+(AoN: https://2e.aonprd.com/Ancestries.aspx?ID=48)
 
 New field on `CombatantSnapshot`:
 ```python

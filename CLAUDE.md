@@ -119,7 +119,7 @@ The killer regression test verifies EV 7.65 for the Strike Hard scenario. This m
 - **EV 7.65** — Strike Hard with Anthem and Rook Earthbreaker (regression anchor, 23rd verification)
 - **EV was 8.55** before Phase B — if you see old briefs referencing 8.55, that was correct at the time
 - **Aetregan:** WIS 10, CHA 12 (from Foundry JSON), Scorpion Whip, ancestry_hp 6, class_hp 8, max HP 15
-- **Rook:** Automaton Guardian, max HP 23, primary weapon Earthbreaker d6, immune to mental/emotion
+- **Rook:** Automaton Guardian, max HP 23, primary weapon Earthbreaker d6, Automaton Constructed Body waives construct immunities — NO mental/emotion immunity per RAW (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=48)
 - **Dalai:** Human Bard, max HP 17, Cha 18, Rapier Pistol
 - **Erisen:** Elf Inventor, max HP 16, Speed 35, Dueling Pistol
 
