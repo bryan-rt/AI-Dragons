@@ -1,38 +1,85 @@
 # Current State
 
-**Last updated:** CP5.4 complete.
+Last updated: April 2026, post-CP7.2 + CP10 architecture planning.
 
-## Latest Test Count
+## Test Count
 
-**545 passing.**
+**578 tests passing.**
 
-## Active Work
+## Active Checkpoint
 
-**CP5.4 — Spell Chassis and Dalai's Combat Spells** (complete).
+**CP10 — Nine-Layer Architecture Rebuild**
 
-### Completed
-- Parameterized spell chassis: 4 pattern evaluators (auto-hit, condition, attack roll, save damage)
-- 3 AoN-verified spells: Fear, Force Barrage, Needle Darts
-- CAST_SPELL ActionType with candidate generation and range filtering
-- Character.known_spells populated by importer from SPELL_REGISTRY
-- Dalai now casts Force Barrage in combat (replaces Create a Diversion)
-- DamageType.FORCE, spell_attack_bonus() added
-- 26 new tests, EV 7.65 (16th verification)
+CP10.1 (Roll Foundation) is the next sub-checkpoint. Pass 1 brief is written. Pass 2 is pending.
 
-### AoN Corrections Applied
-- Fear: 2 actions (not 1), AoN ID=1524
-- Needle Darts: spell attack roll (not save), 3d4 (not 2d4), cantrip, AoN ID=1375
-- Force Barrage: range 120 ft (not 60), AoN ID=1536
+## Killer Regression
 
-## Known Regression Anchors
+**EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
+Verified 23 times (most recently at CP7.2 completion).
 
-- **EV 7.65** — Strike Hard (Rook Earthbreaker). 16th verification.
+Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
+corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
+authoritative Foundry character JSON.
 
-## Next Checkpoint
+## CP10.1 Status
 
-CP8 — Level advancement (L2-L5), feat progression
+- Pass 1 brief: **WRITTEN** (full spec in `.claude/context/cp10_architecture.md`)
+- Pass 2: **PENDING** — resolve 4 open questions, then produce Pass 2 brief for CLI agent
+- Pass 3 (CLI agent implementation): not started
 
-## Links
+**Open questions for Pass 2 (from cp10_architecture.md):**
+1. Count of hardcoded flat check fractions in `actions.py` (CLI agent reports before implementation)
+2. Confirm D34: `D20Outcomes` stays in `combat_math.py` through CP10.3
+3. Fortune distribution math location — recommend `rolls.py`, confirm
+4. Whether to encode nat-1/nat-20 rule explicitly on `RollType.STANDARD` now or defer
 
-- Repo: https://github.com/bryan-rt/AI-Dragons
-- AoN: https://2e.aonprd.com
+## Files to Create in CP10.1
+
+```
+pf2e/rolls.py              (new — ~55 lines)
+tests/test_cp10_1_rolls.py (new — ~80 lines)
+```
+
+**No existing files modified in CP10.1.**
+
+## Expected Test Count After CP10.1
+
+578 → ~597-600 tests
+
+## Known Bugs (Fixed by CP10)
+
+- **Rook Demoralize/Fear:** Engine offers and evaluates these against Rook (Automaton) as if
+  they work. Automaton has mental/emotion immunity. Fix is CP10.2.
+- **Flourish not tracked:** Beam can recommend 2 Flourish actions/turn. Fix is CP10.2.
+- **Cover+Raise Shield stacking:** Both give +2 circumstance AC; correct is highest only = +2.
+  Fix is CP10.3.
+
+## Current Beam Search Parameters
+
+K=50/20/10 at depth 1/2/3. Unchanged through all of CP10 (D37).
+
+## Character Corrections (from Phase B Foundry importer)
+
+These were corrected from the prior Pathbuilder-assumed values:
+- **Rook primary weapon:** Earthbreaker d6 bludgeoning (was Longsword d8 slashing)
+- **Aetregan:** WIS 10, CHA 12 (was WIS 12, CHA 10 — alternate ancestry boosts, JSON authoritative)
+- **Aetregan:** Deception now trained (was untrained)
+- **Aetregan:** Deity Lore removed (not in Foundry export)
+- **Dalai:** Rapier Pistol d4 piercing (was Rapier d6 piercing)
+- **Erisen:** Dueling Pistol d6 piercing (was Dagger d4 piercing); Leather Armor (was Studded Leather)
+
+## Key Test Files
+
+```
+tests/test_combat_math.py       — D20Outcomes, derivation functions
+tests/test_tactics.py           — Tactic evaluators, EV 7.65 regression
+tests/test_grid.py              — Grid geometry
+tests/test_scenario.py          — Scenario loading, killer validation
+tests/test_search.py            — Beam search, full-round evaluation
+tests/test_evaluators.py        — Action evaluators
+tests/test_spells.py            — Spell chassis
+tests/test_foundry_importer.py  — Phase B importer
+tests/test_cp7_1_tactical.py    — Tactical reasoning fixes
+tests/test_cp7_2_hand_state.py  — Hand state, spell slots
+tests/test_cp10_1_rolls.py      — Roll foundation (to be created in CP10.1)
+```
