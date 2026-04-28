@@ -1,50 +1,32 @@
 # Current State
 
-Last updated: April 2026, post-CP7.2 + CP10 architecture planning.
+Last updated: April 2026, post-CP10.1 (Roll Foundation).
 
 ## Test Count
 
-**578 tests passing.**
+**597 tests passing.**
 
 ## Active Checkpoint
 
 **CP10 — Nine-Layer Architecture Rebuild**
 
-CP10.1 (Roll Foundation) is the next sub-checkpoint. Pass 1 brief is written. Pass 2 is pending.
+CP10.1 (Roll Foundation) is **COMPLETE**. CP10.2 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 23 times (most recently at CP7.2 completion).
+Verified 24 times (most recently at CP10.1 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
 
-## CP10.1 Status
+## CP10.1 Status — COMPLETE
 
-- Pass 1 brief: **WRITTEN** (full spec in `.claude/context/cp10_architecture.md`)
-- Pass 2: **PENDING** — resolve 4 open questions, then produce Pass 2 brief for CLI agent
-- Pass 3 (CLI agent implementation): not started
+Created `pf2e/rolls.py` (RollType, FortuneState, flat_check) and
+`tests/test_cp10_1_rolls.py` (19 tests). No existing files modified.
 
-**Open questions for Pass 2 (from cp10_architecture.md):**
-1. Count of hardcoded flat check fractions in `actions.py` (CLI agent reports before implementation)
-2. Confirm D34: `D20Outcomes` stays in `combat_math.py` through CP10.3
-3. Fortune distribution math location — recommend `rolls.py`, confirm
-4. Whether to encode nat-1/nat-20 rule explicitly on `RollType.STANDARD` now or defer
-
-## Files to Create in CP10.1
-
-```
-pf2e/rolls.py              (new — ~55 lines)
-tests/test_cp10_1_rolls.py (new — ~80 lines)
-```
-
-**No existing files modified in CP10.1.**
-
-## Expected Test Count After CP10.1
-
-578 → ~597-600 tests
+578 → 597 tests. EV 7.65 verified (24th).
 
 ## Known Bugs (Fixed by CP10)
 
