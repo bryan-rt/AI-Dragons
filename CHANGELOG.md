@@ -1,5 +1,25 @@
 # Changelog
 
+## [CP10.2] — 2026-04-28
+### Added
+- `pf2e/traits.py` — TraitCategory enum, TraitDef dataclass, TRAIT_REGISTRY (9 slugs)
+- `is_immune(action_traits, target_immunity_tags)` — trait-based immunity gate
+- `has_trait(action_traits, category)` — trait category lookup
+- `Character.immunity_tags: frozenset[str]` — per-character immunity tags (default empty)
+- `CombatantSnapshot.used_flourish_this_turn: bool` — flourish tracking infrastructure
+- `tests/test_traits.py` — 30 new tests
+
+### Design Notes
+- Fear is DESCRIPTOR, not IMMUNITY — immunity flows through emotion trait (AoN: Traits/345)
+- Rook `immunity_tags=frozenset()` — Automaton Constructed Body waives construct immunities (AoN: Ancestries/48)
+- Unknown trait slugs (finesse, agile, reach) silently skipped in is_immune/has_trait
+- Flourish tracking is data-only infrastructure; enforcement deferred to CP10.4
+
+### Deferred to CP10.4
+- Flourish enforcement in beam search
+- Trait-driven evaluator wiring (contest roll, strike chassis)
+- Open/press prerequisite checks
+
 ## [CP5.4] — 2026-04-26
 ### Added
 - `pf2e/spells.py` — SpellDefinition dataclass, SpellPattern enum, SPELL_REGISTRY

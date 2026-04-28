@@ -63,6 +63,11 @@ class CombatantSnapshot:
     # Maps resource_key → remaining uses. E.g. {"spell_slot_1": 2}.
     resources: dict[str, int] = field(default_factory=dict)
 
+    # Flourish tracking — data-only infrastructure for CP10.4.
+    # True if this actor has used a flourish-trait action this turn.
+    # (AoN: https://2e.aonprd.com/Traits.aspx?ID=356)
+    used_flourish_this_turn: bool = False
+
     @classmethod
     def from_combatant_state(cls, state: CombatantState) -> CombatantSnapshot:
         """Construct a snapshot from a live CombatantState.

@@ -182,6 +182,7 @@ def _reset_turn_state(state: RoundState, actor_name: str) -> RoundState:
             map_count=0,
             shield_raised=False,
             conditions=new_conds,
+            used_flourish_this_turn=False,
         )
     elif actor_name in state.enemies:
         snap = state.enemies[actor_name]

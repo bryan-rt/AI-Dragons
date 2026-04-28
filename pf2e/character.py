@@ -95,6 +95,13 @@ class Character:
     # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2224 — Spontaneous spells)
     starting_resources: dict[str, int] = field(default_factory=dict)
 
+    # Trait-based immunity tags. Actions whose traits have a matching
+    # immunity_tag in TRAIT_REGISTRY are blocked against this character.
+    # Empty for most PCs. Automaton Constructed Body waives construct
+    # immunities, so Rook has frozenset() — no immunity tags.
+    # (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=48)
+    immunity_tags: frozenset[str] = field(default_factory=frozenset)
+
 
 @dataclass
 class CombatantState:
