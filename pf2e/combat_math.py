@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pf2e.abilities import AbilityScores
 from pf2e.character import Character, CombatantState, EnemyState
 from pf2e.equipment import EquippedWeapon, Weapon
+from pf2e.modifiers import BonusTracker, BonusType
 from pf2e.proficiency import proficiency_bonus
 from pf2e.types import Ability, ProficiencyRank, SaveType, Skill, SKILL_ABILITY
 
@@ -234,10 +235,14 @@ def attack_bonus(
         char.weapon_proficiencies[weapon.category],
         char.level,
     )
-    item_bonus = equipped.potency_bonus
-    frightened_penalty = -state.frightened
-    status_bonus = state.status_bonus_attack
-    return ability_mod + prof + item_bonus + map_penalty + frightened_penalty + status_bonus
+    t = BonusTracker()
+    t.add(BonusType.UNTYPED, ability_mod, "ability")
+    t.add(BonusType.PROFICIENCY, prof, "proficiency")
+    t.add(BonusType.ITEM, equipped.potency_bonus, "potency")
+    t.add(BonusType.UNTYPED, map_penalty, "MAP")
+    t.add(BonusType.STATUS, -state.frightened, "frightened")
+    t.add(BonusType.STATUS, state.status_bonus_attack, "anthem")
+    return t.total()
 
 
 # ---------------------------------------------------------------------------
@@ -333,12 +338,16 @@ def armor_class(state: CombatantState) -> int:
     shield_bonus = (
         char.shield.ac_bonus if (char.shield and state.shield_raised) else 0
     )
-    off_guard_penalty = -2 if state.off_guard else 0
-    frightened_penalty = -state.frightened  # AC is a DC; frightened applies
-    return (
-        10 + dex_mod + prof + item_bonus + shield_bonus
-        + off_guard_penalty + frightened_penalty
-    )
+    t = BonusTracker()
+    t.add(BonusType.UNTYPED, 10, "base")
+    t.add(BonusType.UNTYPED, dex_mod, "dex")
+    t.add(BonusType.PROFICIENCY, prof, "proficiency")
+    t.add(BonusType.ITEM, item_bonus, "armor")
+    t.add(BonusType.CIRCUMSTANCE, shield_bonus, "shield")
+    if state.off_guard:
+        t.add(BonusType.CIRCUMSTANCE, -2, "off-guard")
+    t.add(BonusType.STATUS, -state.frightened, "frightened")  # AC is a DC
+    return t.total()
 
 
 def class_dc(character: Character) -> int:
@@ -372,7 +381,10 @@ def save_bonus(character: Character, save: SaveType) -> int:
     }
     ability_mod = character.abilities.mod(ability_map[save])
     prof = proficiency_bonus(character.save_ranks[save], character.level)
-    return ability_mod + prof
+    t = BonusTracker()
+    t.add(BonusType.UNTYPED, ability_mod, "ability")
+    t.add(BonusType.PROFICIENCY, prof, "proficiency")
+    return t.total()
 
 
 def perception_bonus(character: Character) -> int:
@@ -382,7 +394,10 @@ def perception_bonus(character: Character) -> int:
     """
     wis_mod = character.abilities.mod(Ability.WIS)
     prof = proficiency_bonus(character.perception_rank, character.level)
-    return wis_mod + prof
+    t = BonusTracker()
+    t.add(BonusType.UNTYPED, wis_mod, "wis")
+    t.add(BonusType.PROFICIENCY, prof, "proficiency")
+    return t.total()
 
 
 def spell_attack_bonus(character: Character) -> int:
@@ -394,7 +409,10 @@ def spell_attack_bonus(character: Character) -> int:
     """
     ability_mod = character.abilities.mod(character.key_ability)
     prof = proficiency_bonus(character.class_dc_rank, character.level)
-    return ability_mod + prof
+    t = BonusTracker()
+    t.add(BonusType.UNTYPED, ability_mod, "ability")
+    t.add(BonusType.PROFICIENCY, prof, "proficiency")
+    return t.total()
 
 
 def skill_bonus(character: Character, skill: Skill) -> int:
@@ -407,7 +425,10 @@ def skill_bonus(character: Character, skill: Skill) -> int:
     ability_mod = character.abilities.mod(ability)
     rank = character.skill_proficiencies.get(skill, ProficiencyRank.UNTRAINED)
     prof = proficiency_bonus(rank, character.level)
-    return ability_mod + prof
+    t = BonusTracker()
+    t.add(BonusType.UNTYPED, ability_mod, "ability")
+    t.add(BonusType.PROFICIENCY, prof, "proficiency")
+    return t.total()
 
 
 def lore_bonus(character: Character, lore_name: str) -> int:
@@ -419,7 +440,10 @@ def lore_bonus(character: Character, lore_name: str) -> int:
     ability_mod = character.abilities.mod(Ability.INT)
     rank = character.lores.get(lore_name, ProficiencyRank.UNTRAINED)
     prof = proficiency_bonus(rank, character.level)
-    return ability_mod + prof
+    t = BonusTracker()
+    t.add(BonusType.UNTYPED, ability_mod, "int")
+    t.add(BonusType.PROFICIENCY, prof, "proficiency")
+    return t.total()
 
 
 # ---------------------------------------------------------------------------

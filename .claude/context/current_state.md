@@ -1,26 +1,49 @@
 # Current State
 
-Last updated: April 2026, post-CP10.2 (Trait System).
+Last updated: April 2026, post-CP10.4.1 (ContestRoll Chassis).
 
 ## Test Count
 
-**627 tests passing.**
+**687 tests passing.**
 
 ## Active Checkpoint
 
 **CP10 — Nine-Layer Architecture Rebuild**
 
 CP10.1 (Roll Foundation) is **COMPLETE**.
-CP10.2 (Trait System) is **COMPLETE**. CP10.3 is next.
+CP10.2 (Trait System) is **COMPLETE**.
+CP10.3 (Modifier Assembly) is **COMPLETE**.
+CP10.4.1 (ContestRoll Chassis) is **COMPLETE**. CP10.4.2 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 25 times (most recently at CP10.2 completion).
+Verified 27 times (most recently at CP10.4.1 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.4.1 Status — COMPLETE
+
+Created `pf2e/contest_roll.py` (ContestRollDef, DegreeEffect, CONTEST_ROLL_REGISTRY
+with 5 entries, _condition_ev(), evaluate_contest_roll()) and
+`tests/test_contest_roll.py` (30 tests). Modified `pf2e/actions.py` to delegate
+5 action types via late-binding `_wire_contest_roll()`.
+
+657 → 687 tests. EV 7.65 verified (27th).
+
+## CP10.3 Status — COMPLETE
+
+Created `pf2e/modifiers.py` (BonusType enum, BonusTracker class) and
+`tests/test_modifiers.py` (30 tests).
+
+Migrated 7 functions in `pf2e/combat_math.py` to use BonusTracker:
+- `armor_class()` — shield=CIRC, off-guard=CIRC penalty, frightened=STATUS
+- `attack_bonus()` — potency=ITEM, MAP=UNTYPED, frightened=STATUS, anthem=STATUS
+- `save_bonus()`, `perception_bonus()`, `spell_attack_bonus()`, `skill_bonus()`, `lore_bonus()`
+
+627 → 657 tests. EV 7.65 verified (26th).
 
 ## CP10.2 Status — COMPLETE
 
@@ -45,8 +68,7 @@ Created `pf2e/rolls.py` (RollType, FortuneState, flat_check) and
 
 - **Documentation error resolved (Pass 1.5):** Rook has no immunity tags. Demoralize/Fear behavior is correct.
 - **~~Flourish not tracked~~ (CP10.2 data infrastructure):** `used_flourish_this_turn` field added. Enforcement in beam search deferred to CP10.4.
-- **Cover+Raise Shield stacking:** Both give +2 circumstance AC; correct is highest only = +2.
-  Fix is CP10.3.
+- **~~Cover+Raise Shield stacking~~ (CP10.3):** BonusTracker now enforces highest-only for same-type circumstance bonuses.
 
 ## Current Beam Search Parameters
 

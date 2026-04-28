@@ -1,5 +1,48 @@
 # Changelog
 
+## [CP10.4.1] — 2026-04-28
+### Added
+- `pf2e/contest_roll.py` — ContestRollDef + DegreeEffect frozen dataclasses, CONTEST_ROLL_REGISTRY (5 entries), `_condition_ev()` helper, `evaluate_contest_roll()` generic chassis
+- `tests/test_contest_roll.py` — 30 new tests (5 data, 4 condition EV, 6 eligibility, 8 outcomes, 6 parity, 1 regression)
+
+### Changed
+- `pf2e/actions.py` — dispatcher late-wires Trip, Disarm, Demoralize, Create a Diversion, Feint to `evaluate_contest_roll()` via `_wire_contest_roll()`
+
+### Design Notes
+- Old evaluators preserved in actions.py (not deleted) for reference and parity testing
+- CaD collapses crit degrees: `crit_success=None` merges into success, `crit_failure=None` merges into failure
+- Demoralize crit_failure deviation from RAW: actor gets frightened_1 (preserved from existing behavior)
+- `_condition_ev()` handles frightened_N dynamically; off_guard/prone/disarmed return 0.0 (fixed EV in DegreeEffect.score_delta)
+- Geometry helpers duplicated from actions.py to avoid circular import
+
+### Deferred to CP10.4.2+
+- Remaining chassis: AutoStateChange, Strike, BasicSave, NonBasicSave, Movement
+- Flourish enforcement in beam search
+- Trait-based immunity for enemies (EnemySnapshot lacks immunity_tags)
+
+## [CP10.3] — 2026-04-28
+### Added
+- `pf2e/modifiers.py` — BonusType enum (5 types), BonusTracker class with PF2e stacking rules
+- `tests/test_modifiers.py` — 30 new tests (16 BonusTracker unit, 11 migration parity, 2 enum, 1 regression)
+
+### Changed
+- `pf2e/combat_math.py` — migrated 7 derivation functions to use BonusTracker:
+  - `armor_class()` — shield as CIRCUMSTANCE bonus, off-guard as CIRCUMSTANCE penalty, frightened as STATUS
+  - `attack_bonus()` — potency as ITEM, MAP as UNTYPED, frightened as STATUS penalty, anthem as STATUS bonus
+  - `save_bonus()`, `perception_bonus()`, `spell_attack_bonus()`, `skill_bonus()`, `lore_bonus()`
+
+### Design Notes
+- Typed bonuses (CIRCUMSTANCE, STATUS, ITEM): highest bonus + worst penalty per type
+- UNTYPED and PROFICIENCY: all values accumulate
+- Shield (+2 circ) and off-guard (-2 circ) correctly both apply (net 0) — bonus/penalty independence
+- Anthem (+1 status) and frightened (-1 status) correctly both apply — same independence
+- class_dc() and siege_save_dc() deliberately NOT migrated (DCs, not checks)
+
+### Deferred to CP10.4+
+- Cover and flanking as new bonus sources (CP10.6)
+- Condition-driven modifier injection (CP10.5)
+- Full action-level BonusTracker (currently function-scoped)
+
 ## [CP10.2] — 2026-04-28
 ### Added
 - `pf2e/traits.py` — TraitCategory enum, TraitDef dataclass, TRAIT_REGISTRY (9 slugs)

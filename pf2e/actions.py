@@ -2534,3 +2534,18 @@ def evaluate_action(
             ineligibility_reason=f"No evaluator registered for {action.type}",
         )
     return evaluator(action, state, spatial)
+
+
+# ---------------------------------------------------------------------------
+# CP10.4: Late-wire contest roll chassis to avoid circular import
+# ---------------------------------------------------------------------------
+
+def _wire_contest_roll() -> None:
+    from pf2e.contest_roll import evaluate_contest_roll
+    for action_type in (
+        ActionType.TRIP, ActionType.DISARM, ActionType.DEMORALIZE,
+        ActionType.CREATE_A_DIVERSION, ActionType.FEINT,
+    ):
+        _ACTION_EVALUATORS[action_type] = evaluate_contest_roll
+
+_wire_contest_roll()
