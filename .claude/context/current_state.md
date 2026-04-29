@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-CP10.4.5 (SaveCondition Chassis).
+Last updated: April 2026, post-CP10.4.6 (Movement Chassis).
 
 ## Test Count
 
-**798 tests passing.**
+**818 tests passing.**
 
 ## Active Checkpoint
 
@@ -17,16 +17,30 @@ CP10.4.1 (ContestRoll Chassis) is **COMPLETE**.
 CP10.4.2 (AutoState Chassis) is **COMPLETE**.
 CP10.4.3 (Strike Chassis) is **COMPLETE**.
 CP10.4.4 (SaveDamage Chassis) is **COMPLETE**.
-CP10.4.5 (SaveCondition Chassis) is **COMPLETE**. CP10.5 is next.
+CP10.4.5 (SaveCondition Chassis) is **COMPLETE**.
+CP10.4.6 (Movement Chassis) is **COMPLETE**. CP10.5 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 31 times (most recently at CP10.4.5 completion).
+Verified 32 times (most recently at CP10.4.6 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.4.6 Status — COMPLETE
+
+Created `pf2e/movement.py` (evaluate_stride, evaluate_step, evaluate_sneak,
+evaluate_crawl) and `tests/test_movement.py` (20 tests). Modified
+`pf2e/actions.py` (CRAWL enum + _wire_movement), `sim/candidates.py`
+(_add_crawl_candidates), `tests/test_evaluators.py` (expected set).
+
+Key changes: Crawl is 5ft flat (not half speed) per AoN. Candidates use
+Step-like adjacency pattern. Enemy crawl candidates deferred. Balance and
+Tumble Through deferred to CP10.6.
+
+798 → 818 tests. EV 7.65 verified (32nd).
 
 ## CP10.4.5 Status — COMPLETE
 

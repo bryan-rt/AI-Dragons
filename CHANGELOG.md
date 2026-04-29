@@ -1,5 +1,23 @@
 # Changelog
 
+## [CP10.4.6] — 2026-04-29
+### Added
+- `pf2e/movement.py` — Movement chassis: `evaluate_stride()`, `evaluate_step()`, `evaluate_sneak()`, `evaluate_crawl()` (new action)
+- `tests/test_movement.py` — 20 new tests (2 stride, 2 step, 4 crawl, 4 sneak, 3 parity, 2 candidates, 3 regression)
+- `ActionType.CRAWL` — prone-only 5ft movement (AoN: Actions.aspx?ID=76)
+
+### Changed
+- `pf2e/actions.py` — CRAWL enum entry + `_wire_movement()` late-binding for STRIDE, STEP, SNEAK, CRAWL
+- `sim/candidates.py` — `_add_crawl_candidates()` generates adjacent squares when actor is prone
+- `tests/test_evaluators.py` — CRAWL added to dispatcher expected set
+
+### Design Notes
+- Crawl is exactly 5ft (not half speed) per AoN, requires Speed >= 10
+- `_d20_success_probability` duplicated in movement.py (3 lines) to avoid import coupling
+- Old evaluators preserved in actions.py for parity testing
+- Enemy crawl candidates deferred (no enemy goes prone in current scenarios)
+- Balance and Tumble Through deferred to CP10.6 (need difficult terrain / path-blocking)
+
 ## [CP10.4.5] — 2026-04-29
 ### Added
 - `pf2e/save_condition.py` — SaveCondition chassis: `_enemy_avg_damage()`, `condition_ev()`, `evaluate_condition_spell()` — data-driven from `SpellDefinition.condition_by_degree`

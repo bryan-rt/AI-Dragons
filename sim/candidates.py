@@ -316,6 +316,10 @@ def _pc_candidates(
             type=ActionType.STAND, actor_name=actor_name, action_cost=1,
         ))
 
+    # CRAWL: if prone, adjacent squares (5 ft movement)
+    if actor.prone and actor.actions_remaining >= 1:
+        _add_crawl_candidates(actor, state, actor_name, actions)
+
     # DROP_PRONE: eligible if not already prone, >= 1 action
     if not actor.prone and actor.actions_remaining >= 1:
         actions.append(Action(
@@ -354,6 +358,38 @@ def _add_step_candidates(
                 continue
             actions.append(Action(
                 type=ActionType.STEP, actor_name=actor_name,
+                action_cost=1, target_position=dest,
+            ))
+
+
+def _add_crawl_candidates(
+    actor: CombatantSnapshot, state: RoundState,
+    actor_name: str, actions: list[Action],
+) -> None:
+    """Add CRAWL actions when prone: adjacent squares only (5 ft).
+    Enemy crawl candidates deferred — no current enemy goes prone.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=76)
+    """
+    if not actor.prone:
+        return
+    speed = (actor.current_speed if actor.current_speed is not None
+             else actor.character.speed)
+    if speed < 10:
+        return
+    occupied = _occupied_positions(state)
+    grid: GridState = state.grid  # type: ignore[assignment]
+    r, c = actor.position
+    for dr in (-1, 0, 1):
+        for dc in (-1, 0, 1):
+            if dr == 0 and dc == 0:
+                continue
+            dest = (r + dr, c + dc)
+            if not (0 <= dest[0] < grid.rows and 0 <= dest[1] < grid.cols):
+                continue
+            if dest in occupied or dest in grid.walls:
+                continue
+            actions.append(Action(
+                type=ActionType.CRAWL, actor_name=actor_name,
                 action_cost=1, target_position=dest,
             ))
 

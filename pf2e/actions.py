@@ -86,6 +86,7 @@ class ActionType(Enum):
     # CP10.4.2: auto-state actions
     DROP_PRONE = auto()        # Drop Prone (1 action)
     TAKE_COVER = auto()        # Take Cover (1 action)
+    CRAWL = auto()             # Crawl 5 ft while prone (CP10.4.6)
 
 
 @dataclass(frozen=True)
@@ -2591,3 +2592,22 @@ def _wire_strike() -> None:
     _ACTION_EVALUATORS[ActionType.STRIKE] = _strike_dispatch
 
 _wire_strike()
+
+
+# ---------------------------------------------------------------------------
+# CP10.4.6: Late-wire movement chassis
+# ---------------------------------------------------------------------------
+
+def _wire_movement() -> None:
+    from pf2e.movement import (
+        evaluate_stride as _mv_stride,
+        evaluate_step as _mv_step,
+        evaluate_sneak as _mv_sneak,
+        evaluate_crawl as _mv_crawl,
+    )
+    _ACTION_EVALUATORS[ActionType.STRIDE] = _mv_stride
+    _ACTION_EVALUATORS[ActionType.STEP] = _mv_step
+    _ACTION_EVALUATORS[ActionType.SNEAK] = _mv_sneak
+    _ACTION_EVALUATORS[ActionType.CRAWL] = _mv_crawl
+
+_wire_movement()
