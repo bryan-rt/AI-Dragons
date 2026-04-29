@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pf2e.character import CombatantState, EnemyState
+from pf2e.detection import LightLevel, LightSource
 from pf2e.tactics import TacticContext
 from pf2e.types import SaveType
 from sim.grid import GridState, Pos, parse_map
@@ -87,6 +88,10 @@ class Scenario:
     # Pre-set conditions per combatant name (from [combatant_state] section).
     # Applied to CombatantSnapshot.conditions during RoundState construction.
     combatant_conditions: dict[str, frozenset[str]] = field(default_factory=dict)
+
+    # Lighting (CP10.7)
+    ambient_light: LightLevel = LightLevel.BRIGHT
+    light_sources: tuple[LightSource, ...] = ()
 
     def build_tactic_context(self) -> TacticContext:
         """Produce a fresh TacticContext with GridSpatialQueries wired in.
@@ -355,6 +360,66 @@ def _parse_combatant_state(text: str | None) -> dict[str, frozenset[str]]:
     return result
 
 
+_LIGHT_SOURCE_SPECS: dict[str, tuple[int, int]] = {
+    "campfire": (20, 40),
+    "torch": (20, 40),
+    "dancing_lights": (0, 20),
+}
+
+
+def _parse_lighting(
+    text: str | None,
+) -> tuple[LightLevel, tuple[LightSource, ...]]:
+    """Parse [lighting] section. Returns (ambient, light_sources).
+
+    Format:
+        ambient = dim
+        campfire = 5,8
+        torch = 3,4
+    """
+    if not text:
+        return (LightLevel.BRIGHT, ())
+
+    ambient = LightLevel.BRIGHT
+    sources: list[LightSource] = []
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip().lower()
+        value = value.strip()
+
+        if key == "ambient":
+            try:
+                ambient = LightLevel(value.lower())
+            except ValueError:
+                raise ScenarioParseError(
+                    f"[lighting] invalid ambient: {value!r} "
+                    f"(expected bright/dim/dark)"
+                )
+        elif key in _LIGHT_SOURCE_SPECS:
+            bright_ft, dim_ft = _LIGHT_SOURCE_SPECS[key]
+            try:
+                parts = value.split(",")
+                pos = (int(parts[0].strip()), int(parts[1].strip()))
+            except (IndexError, ValueError) as e:
+                raise ScenarioParseError(
+                    f"[lighting] invalid position for {key}: {value!r}"
+                ) from e
+            sources.append(LightSource(
+                position=pos,
+                bright_radius_ft=bright_ft,
+                dim_radius_ft=dim_ft,
+                name=key,
+            ))
+
+    return (ambient, tuple(sources))
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -394,6 +459,9 @@ def parse_scenario(text: str) -> Scenario:
     )
     combatant_conditions = _parse_combatant_state(
         sections.get("combatant_state"),
+    )
+    ambient_light, light_sources = _parse_lighting(
+        sections.get("lighting"),
     )
 
     # Commander required
@@ -452,4 +520,6 @@ def parse_scenario(text: str) -> Scenario:
         initiative_seed=initiative_seed,
         initiative_explicit=initiative_explicit,
         combatant_conditions=combatant_conditions,
+        ambient_light=ambient_light,
+        light_sources=light_sources,
     )

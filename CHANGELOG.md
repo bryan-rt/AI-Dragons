@@ -1,5 +1,29 @@
 # Changelog
 
+## [CP10.7] — 2026-04-29
+### Added
+- `pf2e/detection.py` — Three-layer detection system: `LightLevel`, `VisionType`, `DetectionState`, `LightSource`, `compute_light_level()`, `perceived_light_level()`, `compute_detection_state()`
+- `tests/test_detection.py` — 38 new tests (3 enums, 4 light level, 6 perceived, 6 detection state, 6 hide eligibility, 1 hidden EV fix, 3 character vision, 3 RoundState lighting, 3 scenario parsing, 3 regression)
+
+### Fixed
+- **Hide eligibility** — replaced broken adjacency proxy with RAW-correct cover+concealment check (AoN: Actions.aspx?ID=62)
+- **`_hidden_defensive_value`** — fixed 0.45 → 0.50 (DC 11 flat check = 10/20 faces)
+
+### Changed
+- `pf2e/character.py` — added `vision_type: VisionType` field (default NORMAL)
+- `sim/importers/foundry.py` — sets vision_type from ancestry (Elf→LOW_LIGHT, Automaton→DARKVISION)
+- `sim/round_state.py` — `RoundState` gains `ambient_light: LightLevel`, `light_sources: tuple[LightSource, ...]`
+- `sim/scenario.py` — `Scenario` gains lighting fields + `_parse_lighting()` for `[lighting]` section
+- `pf2e/actions.py` — `evaluate_hide` uses `_has_cover_or_concealment()` (cover from walls OR concealment from dim/dark light)
+- `tests/test_evaluators.py` — updated 4 Hide tests for correct cover/concealment requirements
+
+### Design Notes
+- Light measured at DEFENDER's position, perceived through ATTACKER's vision type
+- Low-light: dim→bright. Darkvision: dark→dim, dim→bright
+- Enemy vision hardcoded NORMAL (all L1 enemies are human bandits)
+- Concealed computed on-demand from detection state, not stored in frozenset
+- Scenarios without [lighting] default to BRIGHT ambient, no sources
+
 ## [CP10.6] — 2026-04-29
 ### Added
 - `sim/grid.py` — `are_flanking()` (dot-product geometry), `CoverLevel` IntEnum, `_bresenham_line()`, `compute_cover_level()` (wall-based cover detection)

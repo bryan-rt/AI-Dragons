@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-CP10.6 (Spatial/Positional).
+Last updated: April 2026, post-CP10.7 (Detection/Visibility).
 
 ## Test Count
 
-**875 tests passing.**
+**913 tests passing.**
 
 ## Active Checkpoint
 
@@ -20,16 +20,31 @@ CP10.4.4 (SaveDamage Chassis) is **COMPLETE**.
 CP10.4.5 (SaveCondition Chassis) is **COMPLETE**.
 CP10.4.6 (Movement Chassis) is **COMPLETE**.
 CP10.5 (Condition State Machine) is **COMPLETE**.
-CP10.6 (Spatial/Positional) is **COMPLETE**. CP10.7 is next.
+CP10.6 (Spatial/Positional) is **COMPLETE**.
+CP10.7 (Detection/Visibility) is **COMPLETE**. CP10.8 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 34 times (most recently at CP10.6 completion).
+Verified 35 times (most recently at CP10.7 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.7 Status — COMPLETE
+
+Created `pf2e/detection.py` (LightLevel, VisionType, DetectionState, LightSource,
+compute_light_level, perceived_light_level, compute_detection_state) and
+`tests/test_detection.py` (38 tests). Added `vision_type` to Character, lighting
+fields to RoundState/Scenario, `[lighting]` parser to scenario.py. Fixed
+evaluate_hide to use RAW cover+concealment check. Fixed `_hidden_defensive_value`
+0.45→0.50.
+
+Key: Foundry importer sets Elf→LOW_LIGHT, Automaton→DARKVISION. Enemy vision
+hardcoded NORMAL. Concealed computed on-demand, not stored in frozenset.
+
+875 → 913 tests. EV 7.65 verified (35th).
 
 ## CP10.6 Status — COMPLETE
 

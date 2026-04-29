@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from pf2e.character import Character, CombatantState, EnemyState
 from pf2e.combat_math import max_hp
+from pf2e.detection import LightLevel, LightSource
 from pf2e.types import SaveType
 
 if TYPE_CHECKING:
@@ -170,6 +171,8 @@ class RoundState:
     banner_position: tuple[int, int] | None
     banner_planted: bool
     anthem_active: bool
+    ambient_light: LightLevel = LightLevel.BRIGHT
+    light_sources: tuple[LightSource, ...] = ()
     branch_probability: float = 1.0
 
     @classmethod
@@ -208,6 +211,8 @@ class RoundState:
             banner_position=scenario.banner_position,
             banner_planted=scenario.banner_planted,
             anthem_active=scenario.anthem_active,
+            ambient_light=getattr(scenario, 'ambient_light', LightLevel.BRIGHT),
+            light_sources=getattr(scenario, 'light_sources', ()),
         )
 
     def with_pc_update(self, name: str, **changes: object) -> RoundState:

@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from pf2e.abilities import AbilityScores
+from pf2e.detection import VisionType
 from pf2e.equipment import ArmorData, EquippedWeapon, Shield
 from pf2e.types import Ability, ProficiencyRank, SaveType, Skill, WeaponCategory
 
@@ -101,6 +102,10 @@ class Character:
     # immunities, so Rook has frozenset() — no immunity tags.
     # (AoN: https://2e.aonprd.com/Ancestries.aspx?ID=48)
     immunity_tags: frozenset[str] = field(default_factory=frozenset)
+
+    # Vision type from ancestry. Affects detection in dim/dark conditions.
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2016)
+    vision_type: VisionType = VisionType.NORMAL
 
 
 @dataclass

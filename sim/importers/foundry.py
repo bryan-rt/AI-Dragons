@@ -553,6 +553,15 @@ def import_foundry_actor(path: str) -> Character:
 
     # Find required item types
     class_item = _find_item_by_type(items, "class")
+    from pf2e.detection import VisionType
+    _ANCESTRY_VISION = {
+        "elf": VisionType.LOW_LIGHT,
+        "ancient elf": VisionType.LOW_LIGHT,
+        "automaton": VisionType.DARKVISION,
+        "dwarf": VisionType.DARKVISION,
+        "gnome": VisionType.LOW_LIGHT,
+        "halfling": VisionType.LOW_LIGHT,
+    }
     ancestry_item = _find_item_by_type(items, "ancestry")
 
     # Core derivations
@@ -585,6 +594,10 @@ def import_foundry_actor(path: str) -> Character:
 
     # Speed
     speed = _derive_speed(ancestry_item, feat_names)
+
+    # Vision type from ancestry
+    ancestry_name_lower = ancestry_item.get("name", "").lower()
+    vision_type = _ANCESTRY_VISION.get(ancestry_name_lower, VisionType.NORMAL)
 
     # Boolean feat flags from FEAT_FLAG_MAP
     feat_flags: dict[str, bool] = {
@@ -632,5 +645,6 @@ def import_foundry_actor(path: str) -> Character:
         known_spells=known_spells,
         initially_held=initially_held,
         starting_resources=starting_resources,
+        vision_type=vision_type,
         **feat_flags,
     )

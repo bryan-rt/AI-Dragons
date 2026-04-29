@@ -1120,35 +1120,44 @@ class TestStrikeWithWeaknessResistance:
 
 class TestHide:
 
-    def test_hide_eligible_when_not_adjacent(self) -> None:
+    def test_hide_eligible_with_concealment(self) -> None:
+        """Hide eligible when actor is in dim light (concealment from enemy)."""
+        from dataclasses import replace as dc_replace
         from pf2e.actions import evaluate_hide
-        # Move actor far from enemies
+        from pf2e.detection import LightLevel
         state = _quick_state(pc_overrides={"Aetregan": {"position": (0, 0)}})
+        state = dc_replace(state, ambient_light=LightLevel.DIM)
         action = Action(type=ActionType.HIDE, actor_name="Aetregan", action_cost=1)
         result = evaluate_hide(action, state)
         assert result.eligible
 
-    def test_hide_ineligible_when_adjacent(self) -> None:
+    def test_hide_ineligible_bright_no_cover(self) -> None:
+        """Hide ineligible in bright light with no walls (no cover/concealment)."""
         from pf2e.actions import evaluate_hide
-        state = _quick_state()  # Aetregan at (5,5), Bandit1 at (5,7) — not adjacent
-        # Move Aetregan adjacent to Bandit1
+        state = _quick_state()  # bright ambient, no walls
         state = state.with_pc_update("Aetregan", position=(5, 8))
         action = Action(type=ActionType.HIDE, actor_name="Aetregan", action_cost=1)
         result = evaluate_hide(action, state)
         assert not result.eligible
 
     def test_hide_ineligible_when_already_hidden(self) -> None:
+        from dataclasses import replace as dc_replace
         from pf2e.actions import evaluate_hide
+        from pf2e.detection import LightLevel
         state = _quick_state(pc_overrides={
             "Aetregan": {"position": (0, 0), "conditions": frozenset({"hidden"})},
         })
+        state = dc_replace(state, ambient_light=LightLevel.DIM)
         action = Action(type=ActionType.HIDE, actor_name="Aetregan", action_cost=1)
         result = evaluate_hide(action, state)
         assert not result.eligible
 
     def test_hide_sets_hidden_condition(self) -> None:
+        from dataclasses import replace as dc_replace
         from pf2e.actions import evaluate_hide
+        from pf2e.detection import LightLevel
         state = _quick_state(pc_overrides={"Aetregan": {"position": (0, 0)}})
+        state = dc_replace(state, ambient_light=LightLevel.DIM)
         action = Action(type=ActionType.HIDE, actor_name="Aetregan", action_cost=1)
         result = evaluate_hide(action, state)
         assert "hidden" in result.outcomes[0].conditions_applied.get("Aetregan", ())

@@ -1813,18 +1813,51 @@ def _hidden_defensive_value(state: RoundState) -> float:
             avg_dmg_per_attack += e.damage_bonus
     avg_dmg_per_attack /= max(1, len(living_enemies))
 
-    return attacks_on_me * 0.45 * avg_dmg_per_attack
+    return attacks_on_me * 0.50 * avg_dmg_per_attack
+
+
+def _has_cover_or_concealment(
+    actor_pos: tuple[int, int],
+    enemy_pos: tuple[int, int],
+    state: RoundState,
+) -> bool:
+    """True if actor has cover OR concealment from this enemy.
+    Cover: wall on line between positions (CP10.6).
+    Concealment: actor in dim light from enemy's perspective (CP10.7).
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=62)
+    """
+    # Cover check
+    if getattr(state, 'grid', None) is not None:
+        from sim.grid import compute_cover_level, CoverLevel
+        if compute_cover_level(actor_pos, enemy_pos, state.grid) > CoverLevel.NONE:
+            return True
+    # Concealment check
+    from pf2e.detection import (
+        compute_detection_state, DetectionState, LightLevel, VisionType,
+    )
+    ambient = getattr(state, 'ambient_light', LightLevel.BRIGHT)
+    sources = getattr(state, 'light_sources', ())
+    ds = compute_detection_state(
+        attacker_pos=enemy_pos,
+        defender_pos=actor_pos,
+        attacker_vision=VisionType.NORMAL,
+        light_sources=sources,
+        ambient=ambient,
+        defender_hidden=False,
+    )
+    return ds in (DetectionState.CONCEALED, DetectionState.UNDETECTED)
 
 
 def evaluate_hide(
     action: Action, state: RoundState, spatial: SpatialQueries | None = None,
 ) -> ActionResult:
-    """Attempt to Hide from enemies. Requires cover (proxy: not adjacent to enemy).
+    """Attempt to Hide from enemies. Requires cover or concealment.
 
     On success: Hidden condition (off-guard to enemies, DC 11 flat check to target).
-    (AoN: https://2e.aonprd.com/Actions.aspx — Hide)
-    (AoN: https://2e.aonprd.com/Conditions.aspx — Hidden)
-    Cover proxy is CP5.3 simplification. Full LoS deferred to CP6.
+    Eligible if actor has cover (wall between positions) or concealment
+    (dim/dark light from enemy's perspective) from at least one enemy.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=62)
+    (AoN: https://2e.aonprd.com/Conditions.aspx?ID=45)
     """
     actor = state.pcs.get(action.actor_name)
     if actor is None:
@@ -1834,17 +1867,24 @@ def evaluate_hide(
         return ActionResult(action=action, eligible=False,
                            ineligibility_reason="Already hidden")
 
-    # Cover proxy: ineligible if any living enemy is adjacent
-    for enemy in state.enemies.values():
-        if enemy.current_hp > 0 and _grid_distance_ft(actor.position, enemy.position) <= 5:
-            return ActionResult(action=action, eligible=False,
-                               ineligibility_reason="No cover — adjacent to enemy")
-
-    stealth = skill_bonus(actor.character, Skill.STEALTH)
+    # Hide requires cover OR concealment from at least one enemy.
+    # Cover: wall between actor and enemy (CP10.6).
+    # Concealment: actor in dim/dark light from enemy's perspective (CP10.7).
+    # (AoN: https://2e.aonprd.com/Actions.aspx?ID=62)
     living_enemies = [e for e in state.enemies.values() if e.current_hp > 0]
     if not living_enemies:
         return ActionResult(action=action, eligible=False,
                            ineligibility_reason="No enemies to hide from")
+
+    can_hide = any(
+        _has_cover_or_concealment(actor.position, e.position, state)
+        for e in living_enemies
+    )
+    if not can_hide:
+        return ActionResult(action=action, eligible=False,
+                           ineligibility_reason="No cover or concealment")
+
+    stealth = skill_bonus(actor.character, Skill.STEALTH)
 
     avg_perc_dc = sum(10 + e.perception_bonus for e in living_enemies) / len(living_enemies)
     p_success = _d20_success_probability(stealth, int(avg_perc_dc))
