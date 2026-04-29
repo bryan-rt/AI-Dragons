@@ -2191,7 +2191,8 @@ def evaluate_spell(
     if defn.pattern == SpellPattern.AUTO_HIT_DAMAGE:
         result = _evaluate_auto_hit_spell(action, state, actor, defn)
     elif defn.pattern == SpellPattern.SAVE_OR_CONDITION:
-        result = _evaluate_condition_spell(action, state, actor, defn)
+        from pf2e.save_condition import evaluate_condition_spell
+        result = evaluate_condition_spell(action, state, actor, defn)
     elif defn.pattern == SpellPattern.ATTACK_ROLL:
         from pf2e.strike import evaluate_spell_attack_roll
         result = evaluate_spell_attack_roll(action, state, actor, defn)

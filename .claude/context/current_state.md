@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-CP10.4.4 (SaveDamage Chassis).
+Last updated: April 2026, post-CP10.4.5 (SaveCondition Chassis).
 
 ## Test Count
 
-**775 tests passing.**
+**798 tests passing.**
 
 ## Active Checkpoint
 
@@ -16,16 +16,29 @@ CP10.3 (Modifier Assembly) is **COMPLETE**.
 CP10.4.1 (ContestRoll Chassis) is **COMPLETE**.
 CP10.4.2 (AutoState Chassis) is **COMPLETE**.
 CP10.4.3 (Strike Chassis) is **COMPLETE**.
-CP10.4.4 (SaveDamage Chassis) is **COMPLETE**. CP10.5 is next.
+CP10.4.4 (SaveDamage Chassis) is **COMPLETE**.
+CP10.4.5 (SaveCondition Chassis) is **COMPLETE**. CP10.5 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 30 times (most recently at CP10.4.4 completion).
+Verified 31 times (most recently at CP10.4.5 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.4.5 Status — COMPLETE
+
+Created `pf2e/save_condition.py` (_enemy_avg_damage, condition_ev,
+evaluate_condition_spell) and `tests/test_save_condition.py` (23 tests).
+Modified `pf2e/actions.py` (spell SAVE_OR_CONDITION branch delegation).
+
+Key changes: data-driven degree dispatch from `condition_by_degree` field.
+Prefix matching (longest-first) merges multiple entries per degree. Old
+evaluator preserved. `_enemy_avg_damage` fixes multi-dice bug in flee_ev.
+
+775 → 798 tests. EV 7.65 verified (31st).
 
 ## CP10.4.4 Status — COMPLETE
 

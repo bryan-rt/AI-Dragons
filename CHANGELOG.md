@@ -1,5 +1,19 @@
 # Changelog
 
+## [CP10.4.5] — 2026-04-29
+### Added
+- `pf2e/save_condition.py` — SaveCondition chassis: `_enemy_avg_damage()`, `condition_ev()`, `evaluate_condition_spell()` — data-driven from `SpellDefinition.condition_by_degree`
+- `tests/test_save_condition.py` — 23 new tests (3 avg_damage, 5 condition_ev, 8 evaluate_condition_spell, 4 parity, 3 regression)
+
+### Changed
+- `pf2e/actions.py` — `evaluate_spell()` SAVE_OR_CONDITION branch delegates to `evaluate_condition_spell()` from save_condition.py
+
+### Design Notes
+- Old `_evaluate_condition_spell` preserved in actions.py for parity testing
+- `_enemy_avg_damage` uses `split("d", 1)` — fixes old flee_ev bug that ignores dice count for multi-dice targets. No parity impact on Bandit1 "1d8"
+- Degree prefix matching (longest-first) merges multiple `condition_by_degree` entries per degree into one ActionOutcome
+- Incapacitation trait degree-shift deferred — Fear lacks the trait
+
 ## [CP10.4.4] — 2026-04-29
 ### Added
 - `pf2e/save_damage.py` — BasicSave damage chassis: `basic_save_ev()`, `aoe_enemy_ev()`, `aoe_friendly_fire_ev()`, `evaluate_save_damage_spell()`
