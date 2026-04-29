@@ -424,4 +424,20 @@ def evaluate_spell_attack_roll(
     outcomes = build_strike_outcomes(atk_bonus, eff_ac, base_dmg, crit_dmg,
                                      action.target_name)
 
+    # Add persistent bleed to crit outcome (Needle Darts)
+    if defn.crit_persistent_bleed > 0:
+        bleed_tag = f"persistent_bleed_{defn.crit_persistent_bleed}"
+        new_outcomes = []
+        for o in outcomes:
+            target_dmg = abs(o.hp_changes.get(action.target_name, 0))
+            if target_dmg >= crit_dmg and crit_dmg > 0:
+                o = ActionOutcome(
+                    probability=o.probability,
+                    hp_changes=o.hp_changes,
+                    conditions_applied={action.target_name: (bleed_tag,)},
+                    description=o.description + f" + {bleed_tag}",
+                )
+            new_outcomes.append(o)
+        outcomes = new_outcomes
+
     return ActionResult(action=action, outcomes=tuple(outcomes))

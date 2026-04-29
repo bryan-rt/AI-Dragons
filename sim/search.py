@@ -179,7 +179,14 @@ def apply_outcome_to_state(
                 else:
                     extra_conditions.add(c)
             if extra_conditions:
-                updates["conditions"] = result.pcs[name].conditions | extra_conditions
+                from pf2e.damage_pipeline import merge_persistent_tag
+                merged = result.pcs[name].conditions
+                for ec in extra_conditions:
+                    if ec.startswith("persistent_"):
+                        merged = merge_persistent_tag(merged, ec)
+                    else:
+                        merged = merged | {ec}
+                updates["conditions"] = merged
             if updates:
                 result = result.with_pc_update(name, **updates)
         elif name in result.enemies:
@@ -193,7 +200,14 @@ def apply_outcome_to_state(
                 else:
                     extra_conditions.add(c)
             if extra_conditions:
-                updates["conditions"] = result.enemies[name].conditions | extra_conditions
+                from pf2e.damage_pipeline import merge_persistent_tag
+                merged = result.enemies[name].conditions
+                for ec in extra_conditions:
+                    if ec.startswith("persistent_"):
+                        merged = merge_persistent_tag(merged, ec)
+                    else:
+                        merged = merged | {ec}
+                updates["conditions"] = merged
             if updates:
                 result = result.with_enemy_update(name, **updates)
     for name, count in outcome.reactions_consumed.items():

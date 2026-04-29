@@ -87,12 +87,25 @@ CONDITION_REGISTRY: dict[str, ConditionDef] = {
 def process_end_of_turn(state: RoundState, actor_name: str) -> RoundState:
     """Apply end-of-turn condition processing for actor_name.
 
-    Frightened: decrements by 1 at end of creature's own turn.
-    (AoN: https://2e.aonprd.com/Conditions.aspx?ID=42)
+    Order (per PF2e Remaster):
+    1. Persistent damage — take damage at end of turn
+    2. Recovery check — DC 15 flat check to remove one persistent tag
+    3. Frightened decrement — reduce by 1
+    (AoN persistent: https://2e.aonprd.com/Conditions.aspx?ID=29)
+    (AoN frightened: https://2e.aonprd.com/Conditions.aspx?ID=42)
 
     TRACKING NOTE: PCs store frightened as int field; enemies store as
     frozenset tag ("frightened_N"). These are handled separately.
     """
+    from pf2e.damage_pipeline import apply_persistent_damage, attempt_recovery
+
+    # 1. Persistent damage
+    state, _ = apply_persistent_damage(state, actor_name)
+
+    # 2. Recovery attempt
+    state = attempt_recovery(state, actor_name)
+
+    # 3. Frightened decrement
     if actor_name in state.pcs:
         snap = state.pcs[actor_name]
         if snap.frightened > 0:

@@ -16,6 +16,7 @@ EV composition happens at the search level by weighting outcomes.
 from __future__ import annotations
 
 import logging
+import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -161,3 +162,124 @@ def resolve_strike_outcome(
         interceptor_name=interceptor_name,
         reactions_consumed=reactions_consumed,
     )
+
+
+# ---------------------------------------------------------------------------
+# Persistent damage (CP10.8)
+# ---------------------------------------------------------------------------
+
+
+def _parse_persistent_tags(
+    conditions: frozenset[str],
+) -> list[tuple[str, int]]:
+    """Extract (damage_type, amount) from "persistent_TYPE_N" tags.
+
+    Returns sorted by damage_type for deterministic order.
+    """
+    results = []
+    for c in conditions:
+        if c.startswith("persistent_"):
+            parts = c.split("_", 2)
+            if len(parts) == 3:
+                try:
+                    results.append((parts[1], int(parts[2])))
+                except ValueError:
+                    continue
+    return sorted(results)
+
+
+def merge_persistent_tag(
+    existing: frozenset[str], new_tag: str,
+) -> frozenset[str]:
+    """Apply 'take higher' stacking rule for persistent damage tags.
+
+    Same-type persistent damage doesn't stack — keep the higher value.
+    (AoN: https://2e.aonprd.com/Conditions.aspx?ID=29)
+    """
+    if not new_tag.startswith("persistent_"):
+        return existing | {new_tag}
+    parts = new_tag.split("_", 2)
+    if len(parts) != 3:
+        return existing | {new_tag}
+    damage_type = parts[1]
+    try:
+        new_amount = int(parts[2])
+    except ValueError:
+        return existing | {new_tag}
+    prefix = f"persistent_{damage_type}_"
+    old_amount = 0
+    for c in existing:
+        if c.startswith(prefix):
+            try:
+                old_amount = int(c.split("_", 2)[2])
+            except (IndexError, ValueError):
+                pass
+    keep_amount = max(old_amount, new_amount)
+    filtered = frozenset(c for c in existing if not c.startswith(prefix))
+    return filtered | {f"persistent_{damage_type}_{keep_amount}"}
+
+
+def apply_persistent_damage(
+    state: RoundState, actor_name: str,
+) -> tuple[RoundState, float]:
+    """Apply all persistent damage tags at end of actor's turn.
+
+    Returns (new_state, total_damage_applied).
+    Bypasses the full pipeline — persistent damage is not reduced by
+    Shield Block, Intercept Attack, or Guardian's Armor.
+    (AoN: https://2e.aonprd.com/Conditions.aspx?ID=29)
+    """
+    if actor_name in state.pcs:
+        snap = state.pcs[actor_name]
+        tags = _parse_persistent_tags(snap.conditions)
+        if not tags:
+            return state, 0.0
+        total = sum(amount for _, amount in tags)
+        new_hp = max(0, snap.current_hp - int(total))
+        state = state.with_pc_update(actor_name, current_hp=new_hp)
+        return state, float(total)
+    if actor_name in state.enemies:
+        snap = state.enemies[actor_name]
+        tags = _parse_persistent_tags(snap.conditions)
+        if not tags:
+            return state, 0.0
+        total = sum(amount for _, amount in tags)
+        new_hp = max(0, snap.current_hp - int(total))
+        state = state.with_enemy_update(actor_name, current_hp=new_hp)
+        return state, float(total)
+    return state, 0.0
+
+
+def attempt_recovery(
+    state: RoundState, actor_name: str,
+) -> RoundState:
+    """DC 15 flat check recovery from persistent damage (EV-folded).
+
+    For single-round beam search: tag persists (recovery is future-turn).
+    For multi-round solver: tags removed probabilistically.
+    NOTE: Uses random.random() — non-deterministic. Seeded RNG deferred.
+    (AoN: https://2e.aonprd.com/Conditions.aspx?ID=29)
+    """
+    from pf2e.rolls import flat_check
+
+    recovery_prob = flat_check(15)  # 0.30
+
+    if actor_name in state.pcs:
+        snap = state.pcs[actor_name]
+        tags = _parse_persistent_tags(snap.conditions)
+        if tags and random.random() < recovery_prob:
+            damage_type, _ = tags[0]
+            prefix = f"persistent_{damage_type}_"
+            new_conds = frozenset(
+                c for c in snap.conditions if not c.startswith(prefix))
+            return state.with_pc_update(actor_name, conditions=new_conds)
+    elif actor_name in state.enemies:
+        snap = state.enemies[actor_name]
+        tags = _parse_persistent_tags(snap.conditions)
+        if tags and random.random() < recovery_prob:
+            damage_type, _ = tags[0]
+            prefix = f"persistent_{damage_type}_"
+            new_conds = frozenset(
+                c for c in snap.conditions if not c.startswith(prefix))
+            return state.with_enemy_update(actor_name, conditions=new_conds)
+    return state

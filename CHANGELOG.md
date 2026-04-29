@@ -1,5 +1,23 @@
 # Changelog
 
+## [CP10.8] — 2026-04-29
+### Added
+- `pf2e/damage_pipeline.py` — `_parse_persistent_tags()`, `merge_persistent_tag()` (take-higher stacking), `apply_persistent_damage()` (direct HP, bypasses pipeline), `attempt_recovery()` (DC 15 flat check)
+- `tests/test_persistent_damage.py` — 26 new tests (3 parsing, 6 damage application, 3 recovery, 3 stacking, 3 end-of-turn ordering, 4 Needle Darts crit, 4 regression)
+- `pf2e/spells.py` — `SpellDefinition.crit_persistent_bleed` field; Needle Darts set to 1
+
+### Changed
+- `pf2e/conditions.py` — `process_end_of_turn` now applies persistent damage → recovery → frightened (correct end-of-turn order per AoN)
+- `pf2e/strike.py` — `evaluate_spell_attack_roll` adds persistent bleed to crit outcomes when `defn.crit_persistent_bleed > 0`
+- `sim/search.py` — `apply_outcome_to_state` uses `merge_persistent_tag` for take-higher stacking rule
+
+### Design Notes
+- Persistent damage applies at END of turn (not start — brief was corrected)
+- Recovery: DC 15 flat check = 30% chance, uses `random.random()` (non-deterministic, seeded RNG deferred)
+- Same-type persistent damage takes higher value, different types coexist
+- Persistent damage bypasses Shield Block, Intercept Attack, and Guardian's Armor resistance
+- Splash damage deferred (no L1 party weapons have splash)
+
 ## [CP10.7] — 2026-04-29
 ### Added
 - `pf2e/detection.py` — Three-layer detection system: `LightLevel`, `VisionType`, `DetectionState`, `LightSource`, `compute_light_level()`, `perceived_light_level()`, `compute_detection_state()`

@@ -57,6 +57,10 @@ class SpellDefinition:
     # Tuple of (degree_label, condition_name, condition_value)
     condition_by_degree: tuple[tuple[str, str, int], ...] = ()
 
+    # Persistent bleed on critical hit (Needle Darts)
+    # (AoN: https://2e.aonprd.com/Spells.aspx?ID=1375)
+    crit_persistent_bleed: int = 0
+
     # Spell slot resource tracking (Phase C stub)
     uses_spell_slot: bool = True   # False for cantrips/focus
     spell_slot_rank: int = 1
@@ -121,6 +125,7 @@ SPELL_REGISTRY: dict[str, SpellDefinition] = {
         damage_type=DamageType.PIERCING,
         save_type=None,
         is_basic_save=False,
+        crit_persistent_bleed=1,  # 1 persistent bleed on crit hit
         scales_with_actions=False,
         uses_spell_slot=False,  # Cantrip — unlimited
         spell_slot_rank=0,

@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-CP10.7 (Detection/Visibility).
+Last updated: April 2026, post-CP10.8 (Damage Resolution).
 
 ## Test Count
 
-**913 tests passing.**
+**939 tests passing.**
 
 ## Active Checkpoint
 
@@ -21,16 +21,31 @@ CP10.4.5 (SaveCondition Chassis) is **COMPLETE**.
 CP10.4.6 (Movement Chassis) is **COMPLETE**.
 CP10.5 (Condition State Machine) is **COMPLETE**.
 CP10.6 (Spatial/Positional) is **COMPLETE**.
-CP10.7 (Detection/Visibility) is **COMPLETE**. CP10.8 is next.
+CP10.7 (Detection/Visibility) is **COMPLETE**.
+CP10.8 (Damage Resolution) is **COMPLETE**. CP10.9 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 35 times (most recently at CP10.7 completion).
+Verified 36 times (most recently at CP10.8 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.8 Status — COMPLETE
+
+Extended `pf2e/damage_pipeline.py` with persistent damage: tag parsing,
+apply_persistent_damage (direct HP bypass), attempt_recovery (DC 15 flat
+check), merge_persistent_tag (take-higher stacking). Extended
+`pf2e/conditions.py` process_end_of_turn with persistent damage → recovery
+→ frightened order. Added crit_persistent_bleed to SpellDefinition (Needle
+Darts = 1). Wired stacking in search.py apply_outcome_to_state.
+
+Key: persistent damage at END of turn (not start). Recovery uses
+random.random() (non-deterministic, seeded RNG deferred to CP10.9).
+
+913 → 939 tests. EV 7.65 verified (36th).
 
 ## CP10.7 Status — COMPLETE
 
