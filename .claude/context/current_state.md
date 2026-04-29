@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-CP10.5 (Condition State Machine).
+Last updated: April 2026, post-CP10.6 (Spatial/Positional).
 
 ## Test Count
 
-**846 tests passing.**
+**875 tests passing.**
 
 ## Active Checkpoint
 
@@ -19,16 +19,31 @@ CP10.4.3 (Strike Chassis) is **COMPLETE**.
 CP10.4.4 (SaveDamage Chassis) is **COMPLETE**.
 CP10.4.5 (SaveCondition Chassis) is **COMPLETE**.
 CP10.4.6 (Movement Chassis) is **COMPLETE**.
-CP10.5 (Condition State Machine) is **COMPLETE**. CP10.6 is next.
+CP10.5 (Condition State Machine) is **COMPLETE**.
+CP10.6 (Spatial/Positional) is **COMPLETE**. CP10.7 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 33 times (most recently at CP10.5 completion).
+Verified 34 times (most recently at CP10.6 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.6 Status — COMPLETE
+
+Added `are_flanking()` (dot-product geometry), `CoverLevel`, `compute_cover_level()`
+to `sim/grid.py`. Implemented `is_flanking()` in `pf2e/strike.py` (was stub),
+added `cover_bonus` to `effective_target_ac()`, wired cover into PC weapon strikes
+and spell attack rolls. Created `tests/test_spatial.py` (29 tests) and
+`scenarios/checkpoint_4_terrain_camp.scenario`.
+
+Key: flanking requires both geometric opposition AND ally melee reach. Enemy
+flanking deferred. Cover uses Bresenham line through walls. No EV impact on
+default scenario (no flanking or walls).
+
+846 → 875 tests. EV 7.65 verified (34th).
 
 ## CP10.5 Status — COMPLETE
 

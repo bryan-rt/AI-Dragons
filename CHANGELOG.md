@@ -1,5 +1,21 @@
 # Changelog
 
+## [CP10.6] — 2026-04-29
+### Added
+- `sim/grid.py` — `are_flanking()` (dot-product geometry), `CoverLevel` IntEnum, `_bresenham_line()`, `compute_cover_level()` (wall-based cover detection)
+- `tests/test_spatial.py` — 29 new tests (8 flanking geometry, 5 is_flanking reach, 5 cover, 4 effective_target_ac, 4 strike integration, 3 regression)
+- `scenarios/checkpoint_4_terrain_camp.scenario` — terrain test scenario with river, bridge, wagons, campfire
+
+### Changed
+- `pf2e/strike.py` — `is_flanking()` implemented (was stub returning False); checks ally reach + dot-product geometry. `effective_target_ac()` adds `cover_bonus` parameter. `evaluate_pc_weapon_strike()` and `evaluate_spell_attack_roll()` compute cover via runtime import from sim.grid.
+
+### Design Notes
+- Flanking uses dot-product <= 0 (angle >= 90°); known approximation for perpendicular positions
+- Both flankers must threaten target (within melee reach) per RAW
+- Enemy flanking of PCs deferred; enemy strike still uses `armor_class(target)`
+- Cover: Bresenham line excludes endpoints; wall on interior path = STANDARD (+2 circ AC)
+- No EV impact on killer regression (no flanking or walls in default scenario)
+
 ## [CP10.5] — 2026-04-29
 ### Added
 - `pf2e/conditions.py` — Condition state machine: `ConditionDef`, `CONDITION_REGISTRY` (11 entries), `process_end_of_turn()` (frightened decrement)

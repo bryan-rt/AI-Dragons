@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from enum import IntEnum
 
 # Grid coordinates: (row, col) with row increasing downward.
 Pos = tuple[int, int]
@@ -162,6 +163,86 @@ def shortest_movement_cost(
                 queue.append((npos, new_cost))
 
     return 999
+
+
+# ---------------------------------------------------------------------------
+# Flanking geometry
+# ---------------------------------------------------------------------------
+
+
+def are_flanking(actor_pos: Pos, target_pos: Pos, ally_pos: Pos) -> bool:
+    """Pure geometry: True if actor and ally are on opposite sides of target.
+    Dot-product method: vectors from target to each flanker must have
+    dot product <= 0 (angle >= 90 degrees between them).
+    Known approximation: dot=0 (perpendicular) is treated as flanking.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2375)
+    """
+    if actor_pos == target_pos or ally_pos == target_pos:
+        return False
+    if actor_pos == ally_pos:
+        return False
+    dr_a = actor_pos[0] - target_pos[0]
+    dc_a = actor_pos[1] - target_pos[1]
+    dr_b = ally_pos[0] - target_pos[0]
+    dc_b = ally_pos[1] - target_pos[1]
+    return (dr_a * dr_b + dc_a * dc_b) <= 0
+
+
+# ---------------------------------------------------------------------------
+# Cover detection
+# ---------------------------------------------------------------------------
+
+
+class CoverLevel(IntEnum):
+    """Circumstance bonus to AC granted by cover.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2347)
+    """
+    NONE     = 0
+    LESSER   = 1   # creature in the way — future
+    STANDARD = 2   # wall between attacker and defender
+    GREATER  = 4   # Take Cover behind standard cover — future
+
+
+def _bresenham_line(a: Pos, b: Pos) -> list[Pos]:
+    """Interior grid squares on the line from a to b (endpoints excluded).
+    Used for cover detection — a wall at an endpoint doesn't grant cover.
+    """
+    r0, c0 = a
+    r1, c1 = b
+    points: list[Pos] = []
+    dr = abs(r1 - r0)
+    dc = abs(c1 - c0)
+    sr = 1 if r1 > r0 else -1
+    sc = 1 if c1 > c0 else -1
+    err = dr - dc
+    r, c = r0, c0
+    while (r, c) != (r1, c1):
+        e2 = 2 * err
+        if e2 > -dc:
+            err -= dc
+            r += sr
+        if e2 < dr:
+            err += dr
+            c += sc
+        if (r, c) != (r1, c1):
+            points.append((r, c))
+    return points
+
+
+def compute_cover_level(
+    attacker_pos: Pos, defender_pos: Pos, grid: GridState,
+) -> CoverLevel:
+    """Wall-based cover between attacker and defender.
+    Returns STANDARD (+2) if a wall square lies on the path.
+    Returns NONE if no walls or no wall on path.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2347)
+    """
+    if not grid.walls:
+        return CoverLevel.NONE
+    for sq in _bresenham_line(attacker_pos, defender_pos):
+        if sq in grid.walls:
+            return CoverLevel.STANDARD
+    return CoverLevel.NONE
 
 
 # ---------------------------------------------------------------------------

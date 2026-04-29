@@ -1,0 +1,50 @@
+# scenarios/checkpoint_4_terrain_camp.scenario
+# Three bandits at a camp with terrain: river, bridge, campfire, two wagons.
+# Characters placed at varied positions to test movement and future cover/stealth.
+#
+# TERRAIN KEY (all represented as walls '#' in the grid engine):
+#   River: columns 5-6 running rows 1-7, with a bridge gap at rows 3-4
+#   Campfire: single square at (5, 8)
+#   Wagon 1: two squares at (2, 2) and (2, 3)
+#   Wagon 2: two squares at (6, 9) and (6, 10)
+#
+# FUTURE NOTES (not yet implemented):
+#   - Cover: line of sight through '#' squares should grant standard cover (+2 AC)
+#   - Stealth: Hide requires cover or concealment; terrain objects provide cover
+#   - Lighting: campfire illuminates nearby squares (bright 20ft, dim 40ft)
+#   - River: difficult terrain if waded; impassable except at bridge
+#   - Currently all '#' are impassable walls — differentiation deferred
+
+[meta]
+name = Bandit Camp Ambush
+level = 1
+source = CP10.6 terrain test scenario
+description = Party approaches a bandit camp at night. A river bisects the map with a narrow bridge. Two wagons provide cover near the camp. A campfire burns near the enemy position. Tests: terrain navigation, cover geometry, future stealth/lighting.
+
+[grid]
+. . . . . # . . . . . .
+. . . . . # . . . . . .
+. . . . . # . . . . . .
+. . . . . . . . . . . .
+. . . . . . . . . . . .
+. . . . g # . . . . . .
+. c . . . # . . . # # .
+. . . . . # . # M1 . . .
+. . . b . # # # m1 # m2 .
+. . . . . . . # # # . .
+. . . . i . . . . # # #
+. . . . . . . . . . . .
+
+[banner]
+planted = false
+
+[anthem]
+active = false
+
+[enemies]
+m1 name=Bandit1 ac=15 ref=5 fort=3 will=2 atk=7 dmg=1d8 dmg_bonus=3 attacks=2 max_hp=20 perception=4
+M1 name=Bandit2 ac=17 ref=3 fort=6 will=2 atk=6 dmg=1d10 dmg_bonus=3 attacks=2 max_hp=28 perception=4 resistance_bludgeoning=3
+m2 name=BanditCaster ac=14 ref=4 fort=2 will=6 atk=5 dmg=1d6 dmg_bonus=2 attacks=2 max_hp=16 perception=6
+
+[initiative]
+seed = 77

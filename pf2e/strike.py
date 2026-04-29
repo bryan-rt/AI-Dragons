@@ -51,6 +51,25 @@ def _chebyshev_squares(a: tuple[int, int], b: tuple[int, int]) -> int:
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
 
 
+def _are_flanking(
+    actor_pos: tuple[int, int],
+    target_pos: tuple[int, int],
+    ally_pos: tuple[int, int],
+) -> bool:
+    """Pure geometry flanking check. Duplicated from sim/grid.py.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2375)
+    """
+    if actor_pos == target_pos or ally_pos == target_pos:
+        return False
+    if actor_pos == ally_pos:
+        return False
+    dr_a = actor_pos[0] - target_pos[0]
+    dc_a = actor_pos[1] - target_pos[1]
+    dr_b = ally_pos[0] - target_pos[0]
+    dc_b = ally_pos[1] - target_pos[1]
+    return (dr_a * dr_b + dc_a * dc_b) <= 0
+
+
 def _is_within_weapon_reach(
     attacker_pos: tuple[int, int],
     target_pos: tuple[int, int],
@@ -74,26 +93,39 @@ def is_flanking(
     target_pos: tuple[int, int],
     state: RoundState,
 ) -> bool:
-    """Geometric flanking check. Always False until CP10.6.
-    Flanking grants off-guard (−2 circ AC) to melee attacks from
-    flanking creatures.
+    """True if any living PC ally flanks target with actor AND
+    threatens target (within melee reach). PC-attacker only.
+    Enemy flanking deferred to future checkpoint.
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2375)
     """
-    return False  # CP10.6: implement flanking geometry
+    for ally in state.pcs.values():
+        if ally.current_hp <= 0:
+            continue
+        if ally.position == actor_pos:
+            continue
+        reach = melee_reach_ft(ally.character)
+        if not _is_within_weapon_reach(ally.position, target_pos, reach):
+            continue
+        if _are_flanking(actor_pos, target_pos, ally.position):
+            return True
+    return False
 
 
 def effective_target_ac(
     target: CombatantSnapshot | EnemySnapshot,
     actor_pos: tuple[int, int],
     state: RoundState,
+    cover_bonus: int = 0,
 ) -> int:
-    """AC after off-guard, prone, and flanking reductions.
-    Flanking = attacker-specific off-guard; routed through is_flanking().
+    """AC after off-guard, prone, flanking reductions, and cover bonus.
+    cover_bonus: computed by caller from sim.grid.compute_cover_level.
     (AoN off-guard: https://2e.aonprd.com/Conditions.aspx?ID=58)
+    (AoN flanking: https://2e.aonprd.com/Rules.aspx?ID=2375)
+    (AoN cover: https://2e.aonprd.com/Rules.aspx?ID=2347)
     """
     flanked = is_flanking(actor_pos, target.position, state)
     penalty = 2 if (target.off_guard or target.prone or flanked) else 0
-    return target.ac - penalty
+    return target.ac - penalty + cover_bonus
 
 
 def build_strike_outcomes(
@@ -197,6 +229,15 @@ def evaluate_pc_weapon_strike(
         return ActionResult(action=action, eligible=False,
                             ineligibility_reason="Target out of weapon reach")
 
+    # Cover bonus: defender gains +N circ AC if wall between them
+    # Runtime import avoids module-level pf2e/ -> sim/ dependency
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2347)
+    cover_bonus = 0
+    if getattr(state, 'grid', None) is not None:
+        from sim.grid import compute_cover_level
+        cover_bonus = compute_cover_level(
+            actor.position, target.position, state.grid).value
+
     # Attack bonus: attack_bonus() includes ability+prof+item+MAP+frightened+status.
     # Then add anthem delta (if cast mid-turn) and hidden bonus.
     penalty = map_penalty(actor.map_count + 1, equipped.weapon.is_agile)
@@ -210,7 +251,8 @@ def evaluate_pc_weapon_strike(
     if "hidden" in actor.conditions:
         bonus += 2
 
-    eff_ac = effective_target_ac(target, actor.position, state)
+    eff_ac = effective_target_ac(
+        target, actor.position, state, cover_bonus=cover_bonus)
 
     # Damage
     hit_dmg = damage_avg(actor, equipped)
@@ -366,7 +408,15 @@ def evaluate_spell_attack_roll(
     penalty = map_penalty(actor.map_count + 1, agile=False)
     atk_bonus = spell_attack_bonus(actor.character) + penalty
 
-    eff_ac = effective_target_ac(target, actor.position, state)
+    # Cover bonus for spell attacks
+    cover_bonus = 0
+    if getattr(state, 'grid', None) is not None:
+        from sim.grid import compute_cover_level
+        cover_bonus = compute_cover_level(
+            actor.position, target.position, state.grid).value
+
+    eff_ac = effective_target_ac(
+        target, actor.position, state, cover_bonus=cover_bonus)
 
     base_dmg = defn.damage_dice * die_average(defn.damage_die) + defn.damage_bonus
     crit_dmg = base_dmg * 2
