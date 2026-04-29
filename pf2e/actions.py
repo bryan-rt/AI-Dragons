@@ -1535,37 +1535,38 @@ def evaluate_mortar_launch(
         range_increment=120,
     )
 
-    enemy_targets = [
-        EnemyTarget(name=e.name, ac=e.ac, saves=e.saves)
-        for e in state.enemies.values() if e.current_hp > 0
-    ]
-    if not enemy_targets:
+    # --- Math delegated to save_damage.py (CP10.4.4) ---
+    from pf2e.save_damage import aoe_enemy_ev, aoe_friendly_fire_ev
+    from pf2e.combat_math import class_dc as _class_dc
+
+    dc = _class_dc(actor.character)
+    dice = mortar.dice_at_level(actor.character.level)
+    base_dmg = dice * die_average(mortar.damage_die)
+
+    living_enemies = [e for e in state.enemies.values() if e.current_hp > 0]
+    if not living_enemies:
         return ActionResult(action=action, eligible=False,
                            ineligibility_reason="No living enemies")
 
-    enemy_score = expected_aoe_damage(actor.character, mortar, enemy_targets)
+    enemy_score = aoe_enemy_ev(dc, mortar.save_type, base_dmg, living_enemies)
 
     # Friendly fire: PF2e AoE hits allies within the burst.
-    # Simplified: check if any ally is within 5 ft of any living enemy
-    # (i.e., would be caught in a 10-ft burst centered on/near that enemy).
-    # (AoN: https://2e.aonprd.com/Rules.aspx — Area rules)
-    from pf2e.combat_math import save_bonus as _save_bonus
-    friendly_fire = 0.0
+    # Proximity proxy: ally within 5 ft of any living enemy = in burst.
+    # Burst geometry deferred to CP10.6.
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2384 — AoE hits all creatures)
+    allies_in_burst: list = []
     for ally_name, ally_snap in state.pcs.items():
         if ally_snap.current_hp <= 0 or ally_name == action.actor_name:
             continue
-        # Only penalize if ally is adjacent (5 ft) to an enemy — they'd be
-        # in the 10-ft burst centered on that enemy.
         for enemy in state.enemies.values():
-            if enemy.current_hp > 0 and _grid_distance_ft(ally_snap.position, enemy.position) <= 5:
-                ally_target = EnemyTarget(
-                    name=ally_name, ac=armor_class(ally_snap),  # type: ignore[arg-type]
-                    saves={SaveType.REFLEX: _save_bonus(ally_snap.character, SaveType.REFLEX)},
-                )
-                friendly_fire += expected_aoe_damage(actor.character, mortar, [ally_target])
+            if (enemy.current_hp > 0
+                    and _grid_distance_ft(ally_snap.position, enemy.position) <= 5):
+                allies_in_burst.append(ally_snap)
                 break  # count each ally once
 
-    score = enemy_score - friendly_fire
+    ff_penalty = aoe_friendly_fire_ev(
+        dc, mortar.save_type, base_dmg, allies_in_burst)
+    score = enemy_score - ff_penalty
     if score <= 0.0:
         return ActionResult(action=action, eligible=False,
                            ineligibility_reason="Friendly fire exceeds enemy damage")
@@ -1574,9 +1575,10 @@ def evaluate_mortar_launch(
         action=action,
         outcomes=(ActionOutcome(
             probability=1.0,
-            hp_changes={t.name: -enemy_score / len(enemy_targets) for t in enemy_targets},
+            hp_changes={e.name: -enemy_score / len(living_enemies)
+                        for e in living_enemies},
             conditions_removed={action.actor_name: ("mortar_aimed", "mortar_loaded")},
-            description=f"Launch Mortar (EV {score:.2f}, FF penalty {friendly_fire:.2f})",
+            description=f"Launch Mortar (EV {score:.2f}, FF {ff_penalty:.2f})",
         ),),
     )
 
@@ -2194,7 +2196,8 @@ def evaluate_spell(
         from pf2e.strike import evaluate_spell_attack_roll
         result = evaluate_spell_attack_roll(action, state, actor, defn)
     elif defn.pattern == SpellPattern.SAVE_FOR_DAMAGE:
-        result = _evaluate_save_damage_spell(action, state, actor, defn)
+        from pf2e.save_damage import evaluate_save_damage_spell
+        result = evaluate_save_damage_spell(action, state, actor, defn)
     else:
         return ActionResult(action=action, eligible=False,
                             ineligibility_reason=f"Unimplemented: {defn.pattern}")

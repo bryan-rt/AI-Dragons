@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-CP10.4.3 (Strike Chassis).
+Last updated: April 2026, post-CP10.4.4 (SaveDamage Chassis).
 
 ## Test Count
 
-**750 tests passing.**
+**775 tests passing.**
 
 ## Active Checkpoint
 
@@ -15,16 +15,29 @@ CP10.2 (Trait System) is **COMPLETE**.
 CP10.3 (Modifier Assembly) is **COMPLETE**.
 CP10.4.1 (ContestRoll Chassis) is **COMPLETE**.
 CP10.4.2 (AutoState Chassis) is **COMPLETE**.
-CP10.4.3 (Strike Chassis) is **COMPLETE**. CP10.5 is next.
+CP10.4.3 (Strike Chassis) is **COMPLETE**.
+CP10.4.4 (SaveDamage Chassis) is **COMPLETE**. CP10.5 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 29 times (most recently at CP10.4.3 completion).
+Verified 30 times (most recently at CP10.4.4 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.4.4 Status — COMPLETE
+
+Created `pf2e/save_damage.py` (basic_save_ev, aoe_enemy_ev, aoe_friendly_fire_ev,
+evaluate_save_damage_spell) and `tests/test_save_damage.py` (25 tests). Modified
+`pf2e/actions.py` (mortar delegation + spell SAVE_FOR_DAMAGE branch).
+
+Key changes: mortar math delegated to save_damage.py functions. Old evaluators
+preserved in actions.py. MORTAR_AIM/LOAD chain credit unchanged. basic_save_ev
+uses defender-perspective outcomes (crit_fail=2×, fail=1×, success=0.5×, crit_success=0).
+
+750 → 775 tests. EV 7.65 verified (30th).
 
 ## CP10.4.3 Status — COMPLETE
 

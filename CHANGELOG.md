@@ -1,5 +1,19 @@
 # Changelog
 
+## [CP10.4.4] — 2026-04-29
+### Added
+- `pf2e/save_damage.py` — BasicSave damage chassis: `basic_save_ev()`, `aoe_enemy_ev()`, `aoe_friendly_fire_ev()`, `evaluate_save_damage_spell()`
+- `tests/test_save_damage.py` — 25 new tests (5 basic_save_ev math, 4 aoe_enemy_ev, 3 aoe_ff_ev, 5 save_damage_spell, 5 mortar delegation, 3 regression)
+
+### Changed
+- `pf2e/actions.py` — `evaluate_mortar_launch()` delegates math to `aoe_enemy_ev`/`aoe_friendly_fire_ev` from save_damage.py; `evaluate_spell()` SAVE_FOR_DAMAGE branch delegates to `evaluate_save_damage_spell()`
+
+### Design Notes
+- Old `_evaluate_save_damage_spell` preserved in actions.py for parity testing
+- MORTAR_AIM/MORTAR_LOAD chain credit unchanged (still uses `expected_aoe_damage` from combat_math)
+- `mortar.save_type` used throughout instead of hardcoded `SaveType.REFLEX`
+- Basic save fractions: crit_success=0, success=½, failure=full, crit_failure=×2
+
 ## [CP10.4.1] — 2026-04-28
 ### Added
 - `pf2e/contest_roll.py` — ContestRollDef + DegreeEffect frozen dataclasses, CONTEST_ROLL_REGISTRY (5 entries), `_condition_ev()` helper, `evaluate_contest_roll()` generic chassis
