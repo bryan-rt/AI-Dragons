@@ -316,6 +316,19 @@ def _pc_candidates(
             type=ActionType.STAND, actor_name=actor_name, action_cost=1,
         ))
 
+    # DROP_PRONE: eligible if not already prone, >= 1 action
+    if not actor.prone and actor.actions_remaining >= 1:
+        actions.append(Action(
+            type=ActionType.DROP_PRONE, actor_name=actor_name, action_cost=1,
+        ))
+
+    # TAKE_COVER: eligible if not already covered, >= 1 action
+    # Spatial cover geometry deferred to CP10.6
+    if "cover" not in actor.conditions and actor.actions_remaining >= 1:
+        actions.append(Action(
+            type=ActionType.TAKE_COVER, actor_name=actor_name, action_cost=1,
+        ))
+
     # Always include END_TURN
     actions.append(_end_turn(actor_name))
 

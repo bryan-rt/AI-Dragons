@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-CP10.4.1 (ContestRoll Chassis).
+Last updated: April 2026, post-CP10.4.2 (AutoState Chassis).
 
 ## Test Count
 
-**687 tests passing.**
+**711 tests passing.**
 
 ## Active Checkpoint
 
@@ -13,16 +13,30 @@ Last updated: April 2026, post-CP10.4.1 (ContestRoll Chassis).
 CP10.1 (Roll Foundation) is **COMPLETE**.
 CP10.2 (Trait System) is **COMPLETE**.
 CP10.3 (Modifier Assembly) is **COMPLETE**.
-CP10.4.1 (ContestRoll Chassis) is **COMPLETE**. CP10.4.2 is next.
+CP10.4.1 (ContestRoll Chassis) is **COMPLETE**.
+CP10.4.2 (AutoState Chassis) is **COMPLETE**. CP10.5 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 27 times (most recently at CP10.4.1 completion).
+Verified 28 times (most recently at CP10.4.2 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.4.2 Status — COMPLETE
+
+Created `pf2e/auto_state.py` (AutoStateDef, AUTO_STATE_REGISTRY with 4 entries,
+_compute_ev(), _has_condition(), evaluate_auto_state()) and `tests/test_auto_state.py`
+(24 tests). Modified `pf2e/actions.py` (2 new ActionTypes + `_wire_auto_state()`),
+`sim/candidates.py` (DROP_PRONE, TAKE_COVER generation), `tests/test_evaluators.py`
+(dispatcher expected set).
+
+Key design note: `_has_condition()` bridges bool fields (prone, shield_raised) on
+CombatantSnapshot to the registry's string-based requires_conditions tuples.
+
+687 → 711 tests. EV 7.65 verified (28th).
 
 ## CP10.4.1 Status — COMPLETE
 

@@ -592,6 +592,7 @@ class TestDispatcher:
             ActionType.SNEAK, ActionType.SEEK, ActionType.AID,
             ActionType.STAND, ActionType.CAST_SPELL,
             ActionType.INTERACT, ActionType.RELEASE,
+            ActionType.DROP_PRONE, ActionType.TAKE_COVER,
         }
         assert set(_ACTION_EVALUATORS.keys()) == expected
 

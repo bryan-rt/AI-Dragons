@@ -83,6 +83,9 @@ class ActionType(Enum):
     # CP7.2: hand state
     INTERACT = auto()          # Draw/stow weapon (1 action)
     RELEASE = auto()           # Release held item (free action, 0 cost)
+    # CP10.4.2: auto-state actions
+    DROP_PRONE = auto()        # Drop Prone (1 action)
+    TAKE_COVER = auto()        # Take Cover (1 action)
 
 
 @dataclass(frozen=True)
@@ -2549,3 +2552,20 @@ def _wire_contest_roll() -> None:
         _ACTION_EVALUATORS[action_type] = evaluate_contest_roll
 
 _wire_contest_roll()
+
+
+# ---------------------------------------------------------------------------
+# CP10.4.2: Late-wire auto-state chassis
+# ---------------------------------------------------------------------------
+
+def _wire_auto_state() -> None:
+    from pf2e.auto_state import evaluate_auto_state
+    for atype in (
+        ActionType.STAND,
+        ActionType.RAISE_SHIELD,
+        ActionType.DROP_PRONE,
+        ActionType.TAKE_COVER,
+    ):
+        _ACTION_EVALUATORS[atype] = evaluate_auto_state
+
+_wire_auto_state()
