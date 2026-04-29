@@ -84,21 +84,15 @@ class TestEndOfTurnCleanup:
 
     def test_decrements_frightened(self) -> None:
         state = _quick_state()
-        state = state.with_pc_update(
-            "Rook", conditions=frozenset({"frightened_2"}), frightened=2,
-        )
+        state = state.with_pc_update("Rook", frightened=2)
         state = _end_of_turn_cleanup(state, "Rook")
-        assert "frightened_1" in state.pcs["Rook"].conditions
-        assert "frightened_2" not in state.pcs["Rook"].conditions
+        # PC frightened lives in int field, not frozenset (CP10.5)
         assert state.pcs["Rook"].frightened == 1
 
     def test_removes_frightened_at_zero(self) -> None:
         state = _quick_state()
-        state = state.with_pc_update(
-            "Rook", conditions=frozenset({"frightened_1"}), frightened=1,
-        )
+        state = state.with_pc_update("Rook", frightened=1)
         state = _end_of_turn_cleanup(state, "Rook")
-        assert "frightened_1" not in state.pcs["Rook"].conditions
         assert state.pcs["Rook"].frightened == 0
 
     def test_no_change_without_frightened(self) -> None:

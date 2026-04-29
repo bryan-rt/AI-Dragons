@@ -195,46 +195,13 @@ def _reset_turn_state(state: RoundState, actor_name: str) -> RoundState:
 
 
 def _end_of_turn_cleanup(state: RoundState, actor_name: str) -> RoundState:
-    """Apply end-of-turn condition processing.
+    """Delegate to pf2e/conditions.py process_end_of_turn.
 
-    Frightened: decrement by 1 at end of affected creature's turn.
+    Frightened: decrements at end of creature's own turn.
     (AoN: https://2e.aonprd.com/Conditions.aspx?ID=42)
     """
-    def _decrement_frightened(conditions: frozenset[str]) -> frozenset[str]:
-        new_conds = set(conditions)
-        for c in list(new_conds):
-            if c.startswith("frightened_"):
-                try:
-                    val = int(c.split("_")[1])
-                except (IndexError, ValueError):
-                    continue
-                new_conds.discard(c)
-                if val > 1:
-                    new_conds.add(f"frightened_{val - 1}")
-        return frozenset(new_conds)
-
-    if actor_name in state.pcs:
-        snap = state.pcs[actor_name]
-        new_conds = _decrement_frightened(snap.conditions)
-        if new_conds != snap.conditions:
-            # Also update the frightened int field
-            fright_val = 0
-            for c in new_conds:
-                if c.startswith("frightened_"):
-                    try:
-                        fright_val = int(c.split("_")[1])
-                    except (IndexError, ValueError):
-                        pass
-            state = state.with_pc_update(
-                actor_name, conditions=new_conds, frightened=fright_val,
-            )
-    elif actor_name in state.enemies:
-        snap = state.enemies[actor_name]
-        new_conds = _decrement_frightened(snap.conditions)
-        if new_conds != snap.conditions:
-            state = state.with_enemy_update(actor_name, conditions=new_conds)
-
-    return state
+    from pf2e.conditions import process_end_of_turn
+    return process_end_of_turn(state, actor_name)
 
 
 # ---------------------------------------------------------------------------

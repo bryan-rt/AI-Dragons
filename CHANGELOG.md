@@ -1,5 +1,24 @@
 # Changelog
 
+## [CP10.5] — 2026-04-29
+### Added
+- `pf2e/conditions.py` — Condition state machine: `ConditionDef`, `CONDITION_REGISTRY` (11 entries), `process_end_of_turn()` (frightened decrement)
+- `tests/test_conditions.py` — 28 new tests (5 registry, 8 end-of-turn, 7 conditions_removed fix, 2 simulate_round, 3 integration, 3 regression)
+
+### Fixed
+- **conditions_removed bug** in `sim/search.py` — `apply_outcome_to_state` now updates bool fields (prone, off_guard, shield_raised) and int fields (frightened) when removing conditions, not just the frozenset. Stand now properly clears `prone: bool`.
+- **PC frightened end-of-turn** — old `_end_of_turn_cleanup` operated on frozenset (empty for PCs); new `process_end_of_turn` correctly reads the `frightened: int` field.
+
+### Changed
+- `sim/solver.py` — `_end_of_turn_cleanup` delegates to `process_end_of_turn` from conditions.py
+- `sim/search.py` — `simulate_round` now calls `process_end_of_turn` after each turn (consistent with full solver)
+- `tests/test_solver.py` — Updated 2 existing tests for correct PC frightened tracking (int field, not frozenset)
+
+### Design Notes
+- Dual tracking (bool fields + frozenset) preserved intentionally — unification deferred to post-CP10
+- PCs: frightened as int field; enemies: frightened as frozenset tag "frightened_N"
+- Registry is metadata-only (no behavior dispatch) — evaluators still read fields directly
+
 ## [CP10.4.6] — 2026-04-29
 ### Added
 - `pf2e/movement.py` — Movement chassis: `evaluate_stride()`, `evaluate_step()`, `evaluate_sneak()`, `evaluate_crawl()` (new action)

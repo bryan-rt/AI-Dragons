@@ -204,13 +204,32 @@ def apply_outcome_to_state(
                 reactions_available=max(0, pc.reactions_available - count),
             )
     # Remove conditions listed in conditions_removed
+    # Must update bool/int fields in addition to frozenset (CP10.5 bug fix)
     for name, conds in outcome.conditions_removed.items():
         if name in result.pcs:
+            updates: dict[str, object] = {}
+            for c in conds:
+                if c == "prone":
+                    updates["prone"] = False
+                elif c == "off_guard":
+                    updates["off_guard"] = False
+                elif c == "shield_raised":
+                    updates["shield_raised"] = False
+                elif c.startswith("frightened_"):
+                    updates["frightened"] = 0
             new_conds = result.pcs[name].conditions - set(conds)
-            result = result.with_pc_update(name, conditions=new_conds)
+            updates["conditions"] = new_conds
+            result = result.with_pc_update(name, **updates)
         elif name in result.enemies:
+            updates = {}
+            for c in conds:
+                if c == "prone":
+                    updates["prone"] = False
+                elif c == "off_guard":
+                    updates["off_guard"] = False
             new_conds = result.enemies[name].conditions - set(conds)
-            result = result.with_enemy_update(name, conditions=new_conds)
+            updates["conditions"] = new_conds
+            result = result.with_enemy_update(name, **updates)
     # Resource changes (spell slots, consumables)
     if outcome.resource_changes and outcome.actor_name and outcome.actor_name in result.pcs:
         pc = result.pcs[outcome.actor_name]
@@ -564,6 +583,9 @@ def simulate_round(
 
         plans.append(plan)
         current = plan.resulting_state
+        # End-of-turn condition processing (frightened decrement, etc.)
+        from pf2e.conditions import process_end_of_turn
+        current = process_end_of_turn(current, name)
 
     logger.info(
         f"simulate_round: {len(plans)} turns, "

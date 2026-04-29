@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-CP10.4.6 (Movement Chassis).
+Last updated: April 2026, post-CP10.5 (Condition State Machine).
 
 ## Test Count
 
-**818 tests passing.**
+**846 tests passing.**
 
 ## Active Checkpoint
 
@@ -18,16 +18,30 @@ CP10.4.2 (AutoState Chassis) is **COMPLETE**.
 CP10.4.3 (Strike Chassis) is **COMPLETE**.
 CP10.4.4 (SaveDamage Chassis) is **COMPLETE**.
 CP10.4.5 (SaveCondition Chassis) is **COMPLETE**.
-CP10.4.6 (Movement Chassis) is **COMPLETE**. CP10.5 is next.
+CP10.4.6 (Movement Chassis) is **COMPLETE**.
+CP10.5 (Condition State Machine) is **COMPLETE**. CP10.6 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 32 times (most recently at CP10.4.6 completion).
+Verified 33 times (most recently at CP10.5 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.5 Status — COMPLETE
+
+Created `pf2e/conditions.py` (ConditionDef, CONDITION_REGISTRY, process_end_of_turn)
+and `tests/test_conditions.py` (28 tests). Fixed conditions_removed bug in
+`sim/search.py` (bool fields now cleared). Delegated solver.py _end_of_turn_cleanup.
+Wired simulate_round end-of-turn processing.
+
+Key fixes: (1) conditions_removed now updates prone/off_guard/shield_raised bool
+fields, not just frozenset. (2) PC frightened decrement reads int field directly
+instead of searching frozenset (which was always empty for PCs).
+
+818 → 846 tests. EV 7.65 verified (33rd).
 
 ## CP10.4.6 Status — COMPLETE
 
