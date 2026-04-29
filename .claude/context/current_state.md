@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-CP10.4.2 (AutoState Chassis).
+Last updated: April 2026, post-CP10.4.3 (Strike Chassis).
 
 ## Test Count
 
-**711 tests passing.**
+**750 tests passing.**
 
 ## Active Checkpoint
 
@@ -14,16 +14,31 @@ CP10.1 (Roll Foundation) is **COMPLETE**.
 CP10.2 (Trait System) is **COMPLETE**.
 CP10.3 (Modifier Assembly) is **COMPLETE**.
 CP10.4.1 (ContestRoll Chassis) is **COMPLETE**.
-CP10.4.2 (AutoState Chassis) is **COMPLETE**. CP10.5 is next.
+CP10.4.2 (AutoState Chassis) is **COMPLETE**.
+CP10.4.3 (Strike Chassis) is **COMPLETE**. CP10.5 is next.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 28 times (most recently at CP10.4.2 completion).
+Verified 29 times (most recently at CP10.4.3 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.4.3 Status — COMPLETE
+
+Created `pf2e/strike.py` (is_flanking stub, effective_target_ac, build_strike_outcomes,
+_strike_hidden_ev, evaluate_pc_weapon_strike, evaluate_enemy_strike,
+evaluate_spell_attack_roll) and `tests/test_strike.py` (39 tests). Modified
+`pf2e/actions.py` (`_wire_strike()` dispatch + spell ATTACK_ROLL delegation).
+
+Key changes: geometry helpers duplicated (same pattern as contest_roll.py to avoid
+circular imports). `_strike_hidden_ev` corrected from 0.45 to 0.50 (DC 11 = 10/20).
+Anthem simplification uses `state.anthem_active` delta directly. Old evaluators
+preserved in actions.py.
+
+711 → 750 tests. EV 7.65 verified (29th).
 
 ## CP10.4.2 Status — COMPLETE
 

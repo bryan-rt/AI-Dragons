@@ -2191,7 +2191,8 @@ def evaluate_spell(
     elif defn.pattern == SpellPattern.SAVE_OR_CONDITION:
         result = _evaluate_condition_spell(action, state, actor, defn)
     elif defn.pattern == SpellPattern.ATTACK_ROLL:
-        result = _evaluate_attack_roll_spell(action, state, actor, defn)
+        from pf2e.strike import evaluate_spell_attack_roll
+        result = evaluate_spell_attack_roll(action, state, actor, defn)
     elif defn.pattern == SpellPattern.SAVE_FOR_DAMAGE:
         result = _evaluate_save_damage_spell(action, state, actor, defn)
     else:
@@ -2569,3 +2570,20 @@ def _wire_auto_state() -> None:
         _ACTION_EVALUATORS[atype] = evaluate_auto_state
 
 _wire_auto_state()
+
+
+# ---------------------------------------------------------------------------
+# CP10.4.3: Late-wire strike chassis
+# ---------------------------------------------------------------------------
+
+def _wire_strike() -> None:
+    from pf2e.strike import evaluate_pc_weapon_strike, evaluate_enemy_strike
+
+    def _strike_dispatch(action, state, spatial=None):
+        if action.actor_name in state.pcs:
+            return evaluate_pc_weapon_strike(action, state, spatial)
+        return evaluate_enemy_strike(action, state, spatial)
+
+    _ACTION_EVALUATORS[ActionType.STRIKE] = _strike_dispatch
+
+_wire_strike()
