@@ -87,6 +87,7 @@ class ActionType(Enum):
     DROP_PRONE = auto()        # Drop Prone (1 action)
     TAKE_COVER = auto()        # Take Cover (1 action)
     CRAWL = auto()             # Crawl 5 ft while prone (CP10.4.6)
+    FIRST_AID = auto()         # Medicine to stabilize dying ally (2 actions, CP10.9)
 
 
 @dataclass(frozen=True)
@@ -2085,6 +2086,50 @@ def evaluate_aid(
 
 
 # ---------------------------------------------------------------------------
+# CP10.9: FIRST AID
+# ---------------------------------------------------------------------------
+
+
+def evaluate_first_aid(
+    action: Action, state: RoundState, spatial: SpatialQueries | None = None,
+) -> ActionResult:
+    """First Aid: Stabilize a dying ally. 2 actions, Medicine vs DC 15.
+    Success: removes Dying condition. Unconscious deferred.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2316)
+    """
+    actor = state.pcs.get(action.actor_name)
+    if actor is None:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="Actor not found")
+    if actor.dying > 0:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="Cannot First Aid while dying")
+
+    target = state.pcs.get(action.target_name)
+    if target is None:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="Target not found")
+    if target.dying == 0 or target.dying >= 4:
+        return ActionResult(action=action, eligible=False,
+                            ineligibility_reason="Target is not dying")
+
+    med_bonus = skill_bonus(actor.character, Skill.MEDICINE)
+    p_success = _d20_success_probability(med_bonus, 15)
+
+    from pf2e.combat_math import max_hp as _max_hp
+    stabilize_ev = _max_hp(target.character) * 0.5 * p_success
+
+    return ActionResult(
+        action=action,
+        outcomes=(ActionOutcome(
+            probability=1.0,
+            score_delta=stabilize_ev,
+            description=f"First Aid {action.target_name} EV {stabilize_ev:.2f}",
+        ),),
+    )
+
+
+# ---------------------------------------------------------------------------
 # CP6: STAND
 # ---------------------------------------------------------------------------
 
@@ -2557,6 +2602,7 @@ _ACTION_EVALUATORS: dict[ActionType, Callable[..., ActionResult]] = {
     ActionType.SNEAK: evaluate_sneak,
     ActionType.SEEK: evaluate_seek,
     ActionType.AID: evaluate_aid,
+    ActionType.FIRST_AID: evaluate_first_aid,
     ActionType.STAND: evaluate_stand,
     # CP5.4: spell chassis
     ActionType.CAST_SPELL: evaluate_spell,

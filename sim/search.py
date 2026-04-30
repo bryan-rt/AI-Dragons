@@ -151,8 +151,18 @@ def apply_outcome_to_state(
     result = state
     for name, delta in outcome.hp_changes.items():
         if name in result.pcs:
-            new_hp = result.pcs[name].current_hp + delta
-            result = result.with_pc_update(name, current_hp=int(new_hp))
+            pc = result.pcs[name]
+            post_hp = pc.current_hp + delta
+            if post_hp <= 0 and pc.current_hp > 0 and pc.dying == 0:
+                # PC drops to 0 HP → gain Dying (1 + wounded + doomed)
+                # Crit dying (+1) approximation deferred
+                # (AoN: https://2e.aonprd.com/Conditions.aspx?ID=11)
+                new_dying = max(1, 1 + pc.wounded + pc.doomed)
+                result = result.with_pc_update(
+                    name, current_hp=0, dying=new_dying)
+            else:
+                result = result.with_pc_update(
+                    name, current_hp=max(0, int(post_hp)))
         elif name in result.enemies:
             new_hp = result.enemies[name].current_hp + delta
             result = result.with_enemy_update(name, current_hp=int(new_hp))

@@ -593,7 +593,7 @@ class TestDispatcher:
             ActionType.STAND, ActionType.CAST_SPELL,
             ActionType.INTERACT, ActionType.RELEASE,
             ActionType.DROP_PRONE, ActionType.TAKE_COVER,
-            ActionType.CRAWL,
+            ActionType.CRAWL, ActionType.FIRST_AID,
         }
         assert set(_ACTION_EVALUATORS.keys()) == expected
 

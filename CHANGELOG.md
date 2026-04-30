@@ -1,5 +1,25 @@
 # Changelog
 
+## [CP10.9] — 2026-04-29
+### Added
+- `pf2e/rolls.py` — `FlatCheckOutcomes` dataclass + `flat_check_degrees(dc)` for 4-degree flat checks
+- `pf2e/actions.py` — `ActionType.FIRST_AID` + `evaluate_first_aid()` (2 actions, Medicine vs DC 15)
+- `tests/test_dying.py` — 33 new tests (4 flat_check_degrees, 3 data model, 5 0HP→Dying, 5 recovery, 5 solver integration, 5 First Aid, 2 candidates, 4 regression)
+
+### Changed
+- `sim/round_state.py` — `CombatantSnapshot` gains `dying`, `wounded`, `doomed` fields (all default 0)
+- `sim/search.py` — `apply_outcome_to_state` detects PC dropping to 0HP → applies Dying (1 + wounded + doomed)
+- `sim/solver.py` — `_is_dead` checks `dying >= 4` for PCs; `_all_pcs_dead` checks all dying 4; dying PCs get recovery check turn instead of beam search; `_process_recovery_check` (EV-folded 4-degree flat check)
+- `sim/candidates.py` — FIRST_AID candidates generated when ally is dying
+- `tests/test_evaluators.py` — FIRST_AID added to dispatcher expected set
+
+### Design Notes
+- Recovery check: DC = 10 + dying, 4-degree flat check (no nat 20/1), EV-folded
+- Crit dying (+1 on crit hit) deferred — always use base formula (1 + wounded + doomed)
+- Unconscious condition deferred — recovered PCs (dying=0, hp=1) act immediately
+- Enemies die at 0HP (no dying condition per PF2e rules for non-heroic creatures)
+- First Aid costs 2 actions per AoN
+
 ## [CP10.8] — 2026-04-29
 ### Added
 - `pf2e/damage_pipeline.py` — `_parse_persistent_tags()`, `merge_persistent_tag()` (take-higher stacking), `apply_persistent_damage()` (direct HP, bypasses pipeline), `attempt_recovery()` (DC 15 flat check)

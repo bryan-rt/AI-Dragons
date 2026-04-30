@@ -69,6 +69,12 @@ class CombatantSnapshot:
     # (AoN: https://2e.aonprd.com/Traits.aspx?ID=356)
     used_flourish_this_turn: bool = False
 
+    # Dying/wounded/doomed — PC only. Enemies die at 0HP (no dying).
+    # (AoN: https://2e.aonprd.com/Conditions.aspx?ID=11)
+    dying: int = 0      # 0=alive, 1-3=dying, 4=dead
+    wounded: int = 0    # increases starting dying value
+    doomed: int = 0     # increases dying at 0HP; no L1 sources
+
     @classmethod
     def from_combatant_state(cls, state: CombatantState) -> CombatantSnapshot:
         """Construct a snapshot from a live CombatantState.

@@ -255,6 +255,17 @@ def _pc_candidates(
                     action_cost=1, target_name=pc_name,
                 ))
 
+    # FIRST_AID: if any ally is dying and actor has >= 2 actions
+    if actor.actions_remaining >= 2:
+        for pc_name, pc in state.pcs.items():
+            if pc_name == actor_name:
+                continue
+            if 0 < pc.dying < 4:
+                actions.append(Action(
+                    type=ActionType.FIRST_AID, actor_name=actor_name,
+                    action_cost=2, target_name=pc_name,
+                ))
+
     # CAST_SPELL: for each known spell in SPELL_REGISTRY (CP5.4)
     # CP7.2: check spell slot availability before generating candidates
     from pf2e.spells import SPELL_REGISTRY

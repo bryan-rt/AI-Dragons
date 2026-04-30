@@ -11,6 +11,7 @@ AoN references:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -66,3 +67,37 @@ def flat_check(dc: int) -> float:
     https://2e.aonprd.com/Rules.aspx?ID=2169
     """
     return max(0.0, min(1.0, (21 - dc) / 20))
+
+
+@dataclass(frozen=True)
+class FlatCheckOutcomes:
+    """4-degree outcomes for a flat check.
+
+    Flat checks have no nat 20/1 upgrade/downgrade rules.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2169)
+    """
+    crit_success: float
+    success: float
+    failure: float
+    crit_failure: float
+
+
+def flat_check_degrees(dc: int) -> FlatCheckOutcomes:
+    """4-degree probability breakdown for a flat check.
+
+    No bonuses, no nat 20/1 upgrades. Pure d20 face counting.
+    crit success = d20 >= dc+10, success = dc <= d20 < dc+10,
+    failure = dc-10 <= d20 < dc, crit failure = d20 < dc-10.
+    (AoN Recovery check: https://2e.aonprd.com/Rules.aspx?ID=2040)
+    """
+    cs = sf = fl = cf = 0
+    for d in range(1, 21):
+        if d >= dc + 10:
+            cs += 1
+        elif d >= dc:
+            sf += 1
+        elif d >= dc - 9:
+            fl += 1
+        else:
+            cf += 1
+    return FlatCheckOutcomes(cs / 20, sf / 20, fl / 20, cf / 20)

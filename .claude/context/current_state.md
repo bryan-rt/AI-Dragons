@@ -1,14 +1,14 @@
 # Current State
 
-Last updated: April 2026, post-CP10.8 (Damage Resolution).
+Last updated: April 2026, post-CP10.9 (Death/Dying System).
 
 ## Test Count
 
-**939 tests passing.**
+**972 tests passing.**
 
 ## Active Checkpoint
 
-**CP10 — Nine-Layer Architecture Rebuild**
+**CP10 — Nine-Layer Architecture Rebuild — COMPLETE**
 
 CP10.1 (Roll Foundation) is **COMPLETE**.
 CP10.2 (Trait System) is **COMPLETE**.
@@ -22,16 +22,30 @@ CP10.4.6 (Movement Chassis) is **COMPLETE**.
 CP10.5 (Condition State Machine) is **COMPLETE**.
 CP10.6 (Spatial/Positional) is **COMPLETE**.
 CP10.7 (Detection/Visibility) is **COMPLETE**.
-CP10.8 (Damage Resolution) is **COMPLETE**. CP10.9 is next.
+CP10.8 (Damage Resolution) is **COMPLETE**.
+CP10.9 (Death/Dying System) is **COMPLETE**.
 
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 36 times (most recently at CP10.8 completion).
+Verified 37 times (most recently at CP10.9 completion).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per
 authoritative Foundry character JSON.
+
+## CP10.9 Status — COMPLETE
+
+Added `flat_check_degrees()` to rolls.py. Added `dying`, `wounded`, `doomed`
+to CombatantSnapshot. Implemented 0HP→Dying transition in apply_outcome_to_state.
+Added `_process_recovery_check` (EV-folded 4-degree flat check) and dying PC
+turn handling in solver.py. Added FIRST_AID ActionType + evaluator (2 actions,
+Medicine vs DC 15). Generated FIRST_AID candidates for dying allies.
+
+Key: dying >= 4 = dead; enemies die at 0HP (no dying). Recovery check DC =
+10 + dying. Crit dying and Unconscious condition deferred.
+
+939 → 972 tests. EV 7.65 verified (37th).
 
 ## CP10.8 Status — COMPLETE
 

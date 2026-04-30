@@ -73,7 +73,7 @@ class CombatSolution:
 
 def _is_dead(name: str, state: RoundState) -> bool:
     if name in state.pcs:
-        return state.pcs[name].current_hp <= 0
+        return state.pcs[name].dying >= 4  # Dead at dying 4
     if name in state.enemies:
         return state.enemies[name].current_hp <= 0
     return True
@@ -84,7 +84,7 @@ def _all_enemies_dead(state: RoundState) -> bool:
 
 
 def _all_pcs_dead(state: RoundState) -> bool:
-    return all(s.current_hp <= 0 for s in state.pcs.values())
+    return all(s.dying >= 4 for s in state.pcs.values())
 
 
 def _hp_summary(state: RoundState) -> dict[str, int]:
@@ -194,6 +194,40 @@ def _reset_turn_state(state: RoundState, actor_name: str) -> RoundState:
     return state
 
 
+def _process_recovery_check(
+    state: RoundState, actor_name: str,
+) -> RoundState:
+    """Dying PC recovery check at start of their turn (EV-folded).
+
+    DC = 10 + dying value. 4-degree flat check (no nat 20/1 upgrades).
+    Crit success: dying -2; Success: dying -1;
+    Failure: dying +1; Crit failure: dying +2.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2040)
+    """
+    from pf2e.rolls import flat_check_degrees
+
+    pc = state.pcs[actor_name]
+    if pc.dying == 0 or pc.dying >= 4:
+        return state
+
+    outcomes = flat_check_degrees(10 + pc.dying)
+    expected_delta = (
+        outcomes.crit_success * (-2)
+        + outcomes.success * (-1)
+        + outcomes.failure * (+1)
+        + outcomes.crit_failure * (+2)
+    )
+    new_dying = max(0, min(4, round(pc.dying + expected_delta)))
+
+    if new_dying == 0:
+        # Recovered: lose dying, gain Wounded +1, regain 1 HP
+        # Unconscious deferred — PC acts normally next turn
+        # (AoN: https://2e.aonprd.com/Conditions.aspx?ID=101)
+        return state.with_pc_update(
+            actor_name, dying=0, wounded=pc.wounded + 1, current_hp=1)
+    return state.with_pc_update(actor_name, dying=new_dying)
+
+
 def _end_of_turn_cleanup(state: RoundState, actor_name: str) -> RoundState:
     """Delegate to pf2e/conditions.py process_end_of_turn.
 
@@ -244,6 +278,20 @@ def _run_single_combat(
 
         for actor_name in init_order:
             if _is_dead(actor_name, state):
+                continue
+
+            # Dying PCs (dying 1-3): recovery check only, no beam search
+            if actor_name in state.pcs and state.pcs[actor_name].dying > 0:
+                state = _process_recovery_check(state, actor_name)
+                state = _end_of_turn_cleanup(state, actor_name)
+                turn_log = TurnLog(
+                    combatant_name=actor_name,
+                    is_enemy=False,
+                    actions=["Recovery Check"],
+                    score_delta=0.0,
+                    hp_summary=_hp_summary(state),
+                )
+                round_log.turns.append(turn_log)
                 continue
 
             # Reset action economy BEFORE search
