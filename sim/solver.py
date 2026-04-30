@@ -189,6 +189,7 @@ def _reset_turn_state(state: RoundState, actor_name: str) -> RoundState:
         state = state.with_enemy_update(
             actor_name,
             actions_remaining=3,
+            map_count=0,
         )
 
     return state

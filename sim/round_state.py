@@ -131,6 +131,7 @@ class EnemySnapshot:
     off_guard: bool
     prone: bool
     actions_remaining: int
+    map_count: int = 0  # attacks taken this turn (for MAP tracking)
     conditions: frozenset[str] = frozenset()
     # General-purpose condition/immunity tags. Same as CombatantSnapshot.
     condition_durations: dict[str, int] = field(default_factory=dict)

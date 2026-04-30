@@ -1,5 +1,23 @@
 # Changelog
 
+## [CP11.3] — 2026-04-30
+### Fixed
+- **Enemy MAP** — enemies now apply Multiple Attack Penalty to strikes (was +7/+7/+7, now +7/+2/-3 for standard weapons). Previously all enemy strikes used raw `attack_bonus` regardless of attacks taken, inflating enemy damage ~30-40% per turn.
+
+### Added
+- `sim/round_state.py` — `EnemySnapshot.map_count` field (default 0)
+- `tests/test_enemy_map.py` — 15 new tests (4 MAP penalty, 3 map_count, 2 reset, 3 integration, 3 regression)
+
+### Changed
+- `pf2e/strike.py` — `evaluate_enemy_strike` applies `map_penalty(map_count + 1, agile=False)`
+- `sim/search.py` — `_update_action_economy` increments enemy `map_count` on attack-trait actions
+- `sim/solver.py` — `_reset_turn_state` clears enemy `map_count` to 0
+
+### Design Notes
+- EV 7.65 killer regression UNCHANGED — it tests tactic EV (PC damage output), not enemy damage
+- Agile enemy weapons deferred — no current L1 enemies have agile weapons
+- Enemy adversarial sub-search gets MAP automatically via `_update_action_economy`
+
 ## [CP11.1] — 2026-04-30
 ### Added
 - `--debug-beam PATH` CLI flag — writes structured JSON capturing every beam search evaluation depth-by-depth

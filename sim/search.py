@@ -831,9 +831,13 @@ def _update_action_economy(
         return state.with_pc_update(actor_name, **updates)
     elif actor_name in state.enemies:
         enemy = state.enemies[actor_name]
+        new_map = enemy.map_count
+        if action.type in _ATTACK_TRAIT_TYPES:
+            new_map += 1
         return state.with_enemy_update(
             actor_name,
             actions_remaining=max(0, enemy.actions_remaining - action.action_cost),
+            map_count=new_map,
         )
     return state
 

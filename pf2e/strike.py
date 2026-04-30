@@ -343,11 +343,11 @@ def evaluate_pc_weapon_strike(
 def evaluate_enemy_strike(
     action: Action, state: RoundState, spatial: SpatialQueries | None = None,
 ) -> ActionResult:
-    """Enemy Strike against a PC target.
+    """Enemy Strike against a PC target. Applies MAP from map_count.
 
-    Simplification: enemy MAP not tracked per snapshot. Each Strike
-    uses raw attack_bonus. This overestimates enemy damage (conservative).
+    Agile enemy weapons deferred — no current L1 enemies have agile weapons.
     (AoN: https://2e.aonprd.com/Actions.aspx?ID=2322)
+    (AoN MAP: https://2e.aonprd.com/Rules.aspx?ID=220)
     """
     from pf2e.actions import ActionOutcome, ActionResult
 
@@ -366,6 +366,12 @@ def evaluate_enemy_strike(
         return ActionResult(action=action, eligible=False,
                             ineligibility_reason="Enemy has no modeled offense")
 
+    # Apply MAP based on attacks already taken this turn
+    # Agile enemy weapons deferred — no current enemy has agile weapons at L1
+    # (AoN: https://2e.aonprd.com/Traits.aspx?ID=404)
+    penalty = map_penalty(actor.map_count + 1, agile=False)
+    effective_bonus = actor.attack_bonus + penalty
+
     # Enemy uses armor_class() for target AC (full derivation including
     # shield, off-guard, frightened). Flanking stub feeds through here.
     target_ac = armor_class(target)
@@ -379,7 +385,7 @@ def evaluate_enemy_strike(
         hit_dmg = float(actor.damage_bonus)
     crit_dmg = hit_dmg * 2
 
-    outcomes = build_strike_outcomes(actor.attack_bonus, target_ac,
+    outcomes = build_strike_outcomes(effective_bonus, target_ac,
                                      hit_dmg, crit_dmg, action.target_name)
 
     return ActionResult(action=action, outcomes=tuple(outcomes))
