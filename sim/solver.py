@@ -247,6 +247,7 @@ def _run_single_combat(
     seed: int,
     max_rounds: int,
     config: SearchConfig | None = None,
+    debug_rounds: list[list] | None = None,
 ) -> CombatSolution:
     """Run one full combat to completion with the given seed."""
     if config is None:
@@ -298,13 +299,21 @@ def _run_single_combat(
             state = _reset_turn_state(state, actor_name)
 
             is_enemy = actor_name in state.enemies
+            # Debug sink for this round
+            _round_sink: list | None = None
+            if debug_rounds is not None:
+                if not debug_rounds or len(debug_rounds) < round_num:
+                    debug_rounds.append([])
+                _round_sink = debug_rounds[round_num - 1]
             if is_enemy:
                 plan = adversarial_enemy_turn(
                     state, actor_name, config, candidate_fn, evaluate_fn,
+                    debug_sink=_round_sink,
                 )
             else:
                 plan = beam_search_turn(
                     state, actor_name, config, candidate_fn, evaluate_fn,
+                    debug_sink=_round_sink,
                 )
 
             state = plan.resulting_state
@@ -387,6 +396,7 @@ def solve_combat(
     seed: int = 42,
     max_rounds: int = 10,
     num_plans: int = 5,
+    debug_rounds: list[list] | None = None,
 ) -> CombatSolution:
     """Run full combat to completion. Evaluate num_plans distinct plans.
 
@@ -397,7 +407,10 @@ def solve_combat(
     """
     solutions: list[CombatSolution] = []
     for i in range(num_plans):
-        solution = _run_single_combat(scenario, seed + i, max_rounds)
+        solution = _run_single_combat(
+            scenario, seed + i, max_rounds,
+            debug_rounds=debug_rounds if i == 0 else None,
+        )
         solutions.append(solution)
         logger.info(
             f"Plan {i+1}/{num_plans} (seed={seed+i}): "

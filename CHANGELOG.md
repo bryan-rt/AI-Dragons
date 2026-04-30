@@ -1,5 +1,22 @@
 # Changelog
 
+## [CP11.1] — 2026-04-30
+### Added
+- `--debug-beam PATH` CLI flag — writes structured JSON capturing every beam search evaluation depth-by-depth
+- `sim/search.py` — `DebugActionEntry`, `DebugSequenceEntry`, `DebugTurnLog` dataclasses + `_debug_serialize()` for JSON output
+- `tests/test_debug_beam.py` — 20 new tests (6 presence, 5 depth data, 3 winner matching, 3 JSON serialization, 1 no-debug regression, 2 regression)
+
+### Changed
+- `sim/search.py` — `beam_search_turn`, `adversarial_enemy_turn`, `simulate_round`, `run_simulation` all accept optional `debug_sink` parameter
+- `sim/solver.py` — `solve_combat`, `_run_single_combat` thread `debug_rounds` for full-combat debug output
+- `sim/cli.py` — `--debug-beam PATH` argument; writes JSON after simulation completes
+
+### Design Notes
+- Zero behavior change when `--debug-beam` is absent; debug_sink is write-only during search
+- Depth 1: all evaluated candidates; Depths 2-3: top-K survivors only
+- Full combat: nested round structure with `round_number`
+- JSON output via `_debug_serialize` — manual conversion, no `dataclasses.asdict`
+
 ## [CP10.9] — 2026-04-29
 ### Added
 - `pf2e/rolls.py` — `FlatCheckOutcomes` dataclass + `flat_check_degrees(dc)` for 4-degree flat checks

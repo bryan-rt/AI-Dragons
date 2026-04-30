@@ -129,6 +129,114 @@ class SearchConfig:
     debug: bool = False
 
 
+# ---------------------------------------------------------------------------
+# Debug beam output (CP11.1)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class DebugActionEntry:
+    """Depth-1 evaluated candidate."""
+    action: str
+    action_cost: int
+    score: float
+    hp_delta: float
+    condition_ev: float
+
+
+@dataclass(frozen=True)
+class DebugSequenceEntry:
+    """Depth 2+ survivor sequence."""
+    action_sequence: tuple[str, ...]
+    score: float
+
+
+@dataclass(frozen=True)
+class DebugTurnLog:
+    """Full debug log for one combatant's turn."""
+    actor: str
+    actor_type: str
+    initiative_position: int
+    pre_turn_hp: dict[str, int]
+    candidates_generated: int
+    depth_1_evaluated: tuple[DebugActionEntry, ...]
+    depth_2_survivors: tuple[DebugSequenceEntry, ...]
+    depth_3_survivors: tuple[DebugSequenceEntry, ...]
+    winner_sequence: tuple[str, ...]
+    winner_score: float
+    winner_breakdown: dict[str, float]
+
+
+def _debug_serialize(
+    logs: list[DebugTurnLog],
+    scenario_name: str,
+    seed: int,
+    rounds: list[list[DebugTurnLog]] | None = None,
+) -> dict:
+    """Convert debug logs to JSON-serializable dict.
+
+    If `rounds` is provided (multi-round), use nested structure.
+    Otherwise wrap `logs` as a single round.
+    """
+    def _entry_to_dict(e: DebugActionEntry) -> dict:
+        return {
+            "action": e.action, "action_cost": e.action_cost,
+            "score": round(e.score, 4), "hp_delta": round(e.hp_delta, 4),
+            "condition_ev": round(e.condition_ev, 4),
+        }
+
+    def _seq_to_dict(s: DebugSequenceEntry) -> dict:
+        return {
+            "action_sequence": list(s.action_sequence),
+            "score": round(s.score, 4),
+        }
+
+    def _turn_to_dict(t: DebugTurnLog) -> dict:
+        return {
+            "actor": t.actor,
+            "actor_type": t.actor_type,
+            "initiative_position": t.initiative_position,
+            "pre_turn_hp": t.pre_turn_hp,
+            "candidates_generated": t.candidates_generated,
+            "depths": [
+                {
+                    "depth": 1,
+                    "total_evaluated": len(t.depth_1_evaluated),
+                    "evaluated": [_entry_to_dict(e) for e in t.depth_1_evaluated],
+                },
+                {
+                    "depth": 2,
+                    "total_evaluated": len(t.depth_2_survivors),
+                    "evaluated": [_seq_to_dict(s) for s in t.depth_2_survivors],
+                },
+                {
+                    "depth": 3,
+                    "total_evaluated": len(t.depth_3_survivors),
+                    "evaluated": [_seq_to_dict(s) for s in t.depth_3_survivors],
+                },
+            ],
+            "winner": {
+                "action_sequence": list(t.winner_sequence),
+                "final_score": round(t.winner_score, 4),
+                "score_breakdown": {
+                    k: round(v, 4) for k, v in t.winner_breakdown.items()
+                },
+            },
+        }
+
+    round_groups = rounds if rounds else [logs]
+    return {
+        "scenario": scenario_name,
+        "seed": seed,
+        "rounds": [
+            {
+                "round_number": i + 1,
+                "turns": [_turn_to_dict(t) for t in round_logs],
+            }
+            for i, round_logs in enumerate(round_groups)
+        ],
+    }
+
+
 @dataclass(frozen=True)
 class TurnPlan:
     """Result of a beam search for one character's turn."""
@@ -443,14 +551,22 @@ def beam_search_turn(
     candidate_actions: Callable[[RoundState, str], list[Action]],
     evaluate_action: Callable[[Action, RoundState], ActionResult],
     negate_score: bool = False,
+    debug_sink: list[DebugTurnLog] | None = None,
 ) -> TurnPlan:
     """Find the best 3-action sequence for actor_name.
 
     Args:
         negate_score: If True, maximize -score (for adversarial enemy search).
+        debug_sink: If not None, append a DebugTurnLog for this turn.
     """
     initial = state
     beam: list[_BeamEntry] = [_BeamEntry(state=state, actions=[], weight=1.0)]
+
+    # Debug collection (write-only — never read during search)
+    _dbg_depth1: list[DebugActionEntry] = []
+    _dbg_depth2: list[DebugSequenceEntry] = []
+    _dbg_depth3: list[DebugSequenceEntry] = []
+    _dbg_candidates_generated = 0
 
     for depth in range(3):
         k = config.beam_widths[depth] if not negate_score else (
@@ -475,6 +591,9 @@ def beam_search_turn(
                     action_cost=0,
                 )
                 candidates = [end]
+
+            if depth == 0 and debug_sink is not None:
+                _dbg_candidates_generated = len(candidates)
 
             for action in candidates:
                 result = evaluate_action(action, entry.state)
@@ -508,9 +627,35 @@ def beam_search_turn(
                         ),
                     ))
 
+                    # Debug: collect depth-1 entries
+                    if depth == 0 and debug_sink is not None:
+                        _dbg_depth1.append(DebugActionEntry(
+                            action=_action_label(action, state),
+                            action_cost=action.action_cost,
+                            score=sc * new_weight,
+                            hp_delta=hp_sc,
+                            condition_ev=new_action_ev,
+                        ))
+
         # Keep top K
         next_beam.sort(key=lambda x: x[0], reverse=True)
         beam = [entry for _, entry in next_beam[:k]]
+
+        # Debug: collect depth 2/3 survivors
+        if debug_sink is not None and beam:
+            survivors = [
+                DebugSequenceEntry(
+                    action_sequence=tuple(
+                        _action_label(a, state) for a in e.actions
+                    ),
+                    score=(score_state(e.state, initial) + e.action_ev) * e.weight,
+                )
+                for e in beam
+            ]
+            if depth == 1:
+                _dbg_depth2 = survivors
+            elif depth == 2:
+                _dbg_depth3 = survivors
 
         if not beam:
             break
@@ -541,6 +686,44 @@ def beam_search_turn(
         f"actions={[a.type.name for a in best.actions]}"
     )
 
+    # Debug: finalize and append turn log
+    if debug_sink is not None:
+        pre_hp: dict[str, int] = {}
+        for n, p in state.pcs.items():
+            pre_hp[n] = p.current_hp
+        for n, e in state.enemies.items():
+            pre_hp[n] = e.current_hp
+        init_pos = len(state.initiative_order) - len([
+            n for n in state.initiative_order
+            if n == actor_name or n not in (
+                set(state.pcs) | set(state.enemies))
+        ])
+        # Find position in initiative order
+        try:
+            init_pos = list(state.initiative_order).index(actor_name) + 1
+        except ValueError:
+            init_pos = 0
+        debug_sink.append(DebugTurnLog(
+            actor=actor_name,
+            actor_type="enemy" if negate_score else "pc",
+            initiative_position=init_pos,
+            pre_turn_hp=pre_hp,
+            candidates_generated=_dbg_candidates_generated,
+            depth_1_evaluated=tuple(sorted(
+                _dbg_depth1, key=lambda e: e.score, reverse=True)),
+            depth_2_survivors=tuple(_dbg_depth2),
+            depth_3_survivors=tuple(_dbg_depth3),
+            winner_sequence=tuple(
+                _action_label(a, state) for a in best.actions),
+            winner_score=sc,
+            winner_breakdown={
+                "damage_dealt": breakdown.damage_dealt,
+                "damage_taken": breakdown.damage_taken,
+                "kill_score": breakdown.kill_score,
+                "drop_score": breakdown.drop_score,
+            },
+        ))
+
     return TurnPlan(
         actor_name=actor_name,
         actions=tuple(best.actions),
@@ -556,6 +739,7 @@ def adversarial_enemy_turn(
     config: SearchConfig,
     candidate_actions: Callable[[RoundState, str], list[Action]],
     evaluate_action: Callable[[Action, RoundState], ActionResult],
+    debug_sink: list[DebugTurnLog] | None = None,
 ) -> TurnPlan:
     """Find the enemy's best 3-action sequence (sign-flipped scoring).
 
@@ -565,6 +749,7 @@ def adversarial_enemy_turn(
         state, enemy_name, config,
         candidate_actions, evaluate_action,
         negate_score=True,
+        debug_sink=debug_sink,
     )
 
 
@@ -577,6 +762,7 @@ def simulate_round(
     config: SearchConfig,
     candidate_actions: Callable[[RoundState, str], list[Action]],
     evaluate_action: Callable[[Action, RoundState], ActionResult],
+    debug_sink: list[DebugTurnLog] | None = None,
 ) -> tuple[list[TurnPlan], RoundState]:
     """Simulate a full round in initiative order.
 
@@ -596,11 +782,13 @@ def simulate_round(
             plan = beam_search_turn(
                 current, name, config,
                 candidate_actions, evaluate_action,
+                debug_sink=debug_sink,
             )
         elif name in current.enemies:
             plan = adversarial_enemy_turn(
                 current, name, config,
                 candidate_actions, evaluate_action,
+                debug_sink=debug_sink,
             )
         else:
             continue
@@ -785,6 +973,7 @@ def run_simulation(
     scenario: Scenario,
     seed: int = 42,
     config: SearchConfig | None = None,
+    debug_sink: list[DebugTurnLog] | None = None,
 ) -> list[RoundRecommendation]:
     """Load scenario, roll initiative, run beam search, return recommendations.
 
@@ -817,6 +1006,7 @@ def run_simulation(
 
     plans, final = simulate_round(
         init_state, config, candidate_actions, evaluate_action_fn,
+        debug_sink=debug_sink,
     )
 
     # Reconstruct pre-turn states for tactic label enrichment
