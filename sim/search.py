@@ -201,16 +201,19 @@ def _debug_serialize(
                 {
                     "depth": 1,
                     "total_evaluated": len(t.depth_1_evaluated),
+                    "survivors_into_next": len(t.depth_2_survivors),
                     "evaluated": [_entry_to_dict(e) for e in t.depth_1_evaluated],
                 },
                 {
                     "depth": 2,
                     "total_evaluated": len(t.depth_2_survivors),
+                    "survivors_into_next": len(t.depth_3_survivors),
                     "evaluated": [_seq_to_dict(s) for s in t.depth_2_survivors],
                 },
                 {
                     "depth": 3,
                     "total_evaluated": len(t.depth_3_survivors),
+                    "survivors_into_next": None,
                     "evaluated": [_seq_to_dict(s) for s in t.depth_3_survivors],
                 },
             ],
@@ -634,7 +637,7 @@ def beam_search_turn(
                             action_cost=action.action_cost,
                             score=sc * new_weight,
                             hp_delta=hp_sc,
-                            condition_ev=new_action_ev,
+                            condition_ev=action_ev_delta,
                         ))
 
         # Keep top K
@@ -705,7 +708,7 @@ def beam_search_turn(
             init_pos = 0
         debug_sink.append(DebugTurnLog(
             actor=actor_name,
-            actor_type="enemy" if negate_score else "pc",
+            actor_type="enemy" if actor_name in state.enemies else "pc",
             initiative_position=init_pos,
             pre_turn_hp=pre_hp,
             candidates_generated=_dbg_candidates_generated,

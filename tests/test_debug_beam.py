@@ -113,6 +113,14 @@ class TestDepthData:
         assert isinstance(entry.hp_delta, float)
         assert isinstance(entry.condition_ev, float)
 
+    def test_condition_ev_is_per_action_delta(self):
+        """End Turn has no condition effect → condition_ev == 0.0."""
+        _, sink, _ = _run_with_debug()
+        for t in sink:
+            end_turns = [e for e in t.depth_1_evaluated if e.action == "End Turn"]
+            for e in end_turns:
+                assert e.condition_ev == 0.0
+
 
 # ===========================================================================
 # Winner matching (3)
@@ -166,6 +174,18 @@ class TestJsonSerialization:
         _, sink, scenario = _run_with_debug()
         result = _debug_serialize(sink, scenario.name, 42)
         assert result["scenario"] == scenario.name
+
+    def test_serialize_survivors_into_next(self):
+        """All three depths have survivors_into_next; depth 3 is null."""
+        _, sink, scenario = _run_with_debug()
+        result = _debug_serialize(sink, scenario.name, 42)
+        turn = result["rounds"][0]["turns"][0]
+        d1 = turn["depths"][0]
+        d2 = turn["depths"][1]
+        d3 = turn["depths"][2]
+        assert d1["survivors_into_next"] == len(d2["evaluated"])
+        assert d2["survivors_into_next"] == len(d3["evaluated"])
+        assert d3["survivors_into_next"] is None
 
 
 # ===========================================================================

@@ -11,6 +11,11 @@
 - `sim/solver.py` — `solve_combat`, `_run_single_combat` thread `debug_rounds` for full-combat debug output
 - `sim/cli.py` — `--debug-beam PATH` argument; writes JSON after simulation completes
 
+### Fixed
+- `actor_type`: use `actor_name in state.enemies` check instead of `negate_score` proxy
+- `condition_ev`: store `action_ev_delta` (this action only), not cumulative `new_action_ev`
+- `survivors_into_next`: added to all three depth dicts in `_debug_serialize` (depth 1→len(d2), depth 2→len(d3), depth 3→None)
+
 ### Design Notes
 - Zero behavior change when `--debug-beam` is absent; debug_sink is write-only during search
 - Depth 1: all evaluated candidates; Depths 2-3: top-K survivors only
