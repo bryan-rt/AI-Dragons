@@ -127,6 +127,7 @@ class SearchConfig:
     outcome_prune_threshold: float = 0.001
     seed: int = 42
     debug: bool = False
+    verbose: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +249,9 @@ class TurnPlan:
     expected_score: float
     resulting_state: RoundState
     score_breakdown: ScoreBreakdown
+    # Verbose mode only — empty tuple in normal runs
+    action_results: tuple = ()       # tuple[ActionResult, ...]
+    intermediate_states: tuple = ()  # tuple[RoundState, ...]
 
 
 # ---------------------------------------------------------------------------
@@ -545,6 +549,9 @@ class _BeamEntry:
     actions: list[Action]
     weight: float  # cumulative branch probability
     action_ev: float = 0.0  # accumulated evaluator score_delta (conditions, etc.)
+    # Verbose mode only — empty in normal runs (zero overhead)
+    action_results: list = field(default_factory=list)      # list[ActionResult]
+    intermediate_states: list = field(default_factory=list)  # list[RoundState]
 
 
 def beam_search_turn(
@@ -617,6 +624,15 @@ def beam_search_turn(
                     new_actions = entry.actions + [action]
                     new_weight = entry.weight * weight
                     new_action_ev = entry.action_ev + action_ev_delta
+
+                    # Verbose: carry forward results + intermediate states
+                    new_action_results = entry.action_results
+                    new_intermediate_states = entry.intermediate_states
+                    if config.verbose:
+                        new_action_results = entry.action_results + [result]
+                        new_intermediate_states = (
+                            entry.intermediate_states + [child_state])
+
                     hp_sc = score_state(child_state, initial)
                     sc = hp_sc + new_action_ev
                     sc = -sc if negate_score else sc
@@ -627,6 +643,8 @@ def beam_search_turn(
                             actions=new_actions,
                             weight=new_weight,
                             action_ev=new_action_ev,
+                            action_results=new_action_results,
+                            intermediate_states=new_intermediate_states,
                         ),
                     ))
 
@@ -733,6 +751,8 @@ def beam_search_turn(
         expected_score=sc,
         resulting_state=best.state,
         score_breakdown=breakdown,
+        action_results=tuple(best.action_results),
+        intermediate_states=tuple(best.intermediate_states),
     )
 
 
@@ -854,6 +874,7 @@ class RoundRecommendation:
     expected_score: float
     top_alternatives: list[tuple[list[str], float]]
     reasoning: str
+    verbose_text: str = ""
 
 
 def format_recommendation(rec: RoundRecommendation) -> str:
@@ -862,6 +883,9 @@ def format_recommendation(rec: RoundRecommendation) -> str:
     lines.append(f"Best plan (EV {rec.expected_score:.2f}):")
     for i, action in enumerate(rec.actions, 1):
         lines.append(f"  {i}. {action}")
+    if rec.verbose_text:
+        for vline in rec.verbose_text.splitlines():
+            lines.append(vline)
     if rec.top_alternatives:
         lines.append("\nAlternatives:")
         for alt_actions, alt_score in rec.top_alternatives:
@@ -947,7 +971,9 @@ def _tactic_detail(action: Action, state: RoundState | None) -> str:
 
 
 def _turn_plan_to_recommendation(
-    plan: TurnPlan, pre_turn_state: RoundState | None = None,
+    plan: TurnPlan,
+    pre_turn_state: RoundState | None = None,
+    config: SearchConfig | None = None,
 ) -> RoundRecommendation:
     """Convert a TurnPlan into a human-readable RoundRecommendation.
 
@@ -963,12 +989,21 @@ def _turn_plan_to_recommendation(
         f"damage_taken={breakdown.damage_taken:.1f}, "
         f"kills={breakdown.kill_score:.0f}, drops={breakdown.drop_score:.0f}"
     )
+
+    verbose_text = ""
+    if (config and config.verbose
+            and plan.action_results
+            and pre_turn_state is not None):
+        from sim.verbose import format_verbose_turn
+        verbose_text = format_verbose_turn(plan, pre_turn_state)
+
     return RoundRecommendation(
         actor_name=plan.actor_name,
         actions=action_labels,
         expected_score=plan.expected_score,
         top_alternatives=[],
         reasoning=reasoning,
+        verbose_text=verbose_text,
     )
 
 
@@ -1024,6 +1059,6 @@ def run_simulation(
         current = plan.resulting_state
 
     return [
-        _turn_plan_to_recommendation(p, pre)
+        _turn_plan_to_recommendation(p, pre, config)
         for p, pre in zip(plans, pre_turn_states)
     ]

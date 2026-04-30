@@ -1,5 +1,22 @@
 # Changelog
 
+## [CP11.7.0] — 2026-04-30
+### Added
+- `--verbose` CLI flag — shows per-action probability breakdown (MAP, attack bonus, target AC, hit/miss/crit probabilities, EV, HP delta) for all combatants including enemies
+- `sim/verbose.py` — `format_verbose_turn`, `format_verbose_action`, action-type formatters for Strike, Stride, Skill, Spell, Tactic, Anthem
+- `tests/test_verbose.py` — 18 new tests (3 _hp_delta, 3 _clamp, 1 empty, 3 TurnPlan fields, 6 output content, 1 full-combat, 1 regression)
+
+### Changed
+- `sim/search.py` — `SearchConfig.verbose`, `_BeamEntry.action_results/intermediate_states`, `TurnPlan.action_results/intermediate_states`, `RoundRecommendation.verbose_text`
+- `sim/solver.py` — `TurnLog.verbose_text`, `solve_combat` accepts `config` parameter, verbose text computed in `_run_single_combat`
+- `sim/cli.py` — `--verbose` argument, threads `SearchConfig` to both run paths
+
+### Design Notes
+- Zero behavior change — pure presentation layer, EV 7.65 unchanged
+- Verbose data stored on winning beam entry only (zero overhead when disabled)
+- All verbose output lines guaranteed <= 80 characters
+- Works with both `--full-combat` and single-round mode, alongside `--debug-beam`
+
 ## [CP11.3] — 2026-04-30
 ### Fixed
 - **Enemy MAP** — enemies now apply Multiple Attack Penalty to strikes (was +7/+7/+7, now +7/+2/-3 for standard weapons). Previously all enemy strikes used raw `attack_bonus` regardless of attacks taken, inflating enemy damage ~30-40% per turn.

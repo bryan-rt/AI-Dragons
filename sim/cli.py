@@ -56,6 +56,10 @@ def main(argv: list[str] | None = None) -> None:
         "--debug-beam", type=str, default=None, metavar="PATH",
         help="Write beam search debug JSON to PATH.",
     )
+    parser.add_argument(
+        "--verbose", action="store_true",
+        help="Show per-action probability breakdown for each turn.",
+    )
     args = parser.parse_args(argv)
 
     if args.debug_search:
@@ -79,14 +83,20 @@ def main(argv: list[str] | None = None) -> None:
     debug_sink = [] if args.debug_beam else None
     debug_rounds = [] if args.debug_beam else None
 
+    # Build search config with verbose flag
+    from sim.search import SearchConfig
+    config = SearchConfig(verbose=args.verbose) if args.verbose else None
+
     if args.full_combat:
         from sim.solver import solve_combat, format_combat_solution
         solution = solve_combat(scenario, seed=args.seed,
-                                debug_rounds=debug_rounds)
+                                debug_rounds=debug_rounds,
+                                config=config)
         print(format_combat_solution(solution))
     else:
         recommendations = run_simulation(scenario, seed=args.seed,
-                                         debug_sink=debug_sink)
+                                         debug_sink=debug_sink,
+                                         config=config)
         for rec in recommendations:
             print(format_recommendation(rec))
 

@@ -44,6 +44,7 @@ class TurnLog:
     actions: list[str]
     score_delta: float
     hp_summary: dict[str, int]
+    verbose_text: str = ""
 
 
 @dataclass
@@ -298,6 +299,7 @@ def _run_single_combat(
 
             # Reset action economy BEFORE search
             state = _reset_turn_state(state, actor_name)
+            pre_turn_state = state  # After reset, before search
 
             is_enemy = actor_name in state.enemies
             # Debug sink for this round
@@ -319,6 +321,13 @@ def _run_single_combat(
 
             state = plan.resulting_state
 
+            # Compute verbose text while pre_turn_state is available
+            verbose_text = ""
+            if config.verbose and plan.action_results:
+                from sim.verbose import format_verbose_turn
+                verbose_text = format_verbose_turn(
+                    plan, pre_turn_state)
+
             # Build turn log
             action_labels = [_action_label(a, state) for a in plan.actions]
             turn_log = TurnLog(
@@ -327,6 +336,7 @@ def _run_single_combat(
                 actions=action_labels,
                 score_delta=plan.expected_score,
                 hp_summary=_hp_summary(state),
+                verbose_text=verbose_text,
             )
             round_log.turns.append(turn_log)
 
@@ -398,6 +408,7 @@ def solve_combat(
     max_rounds: int = 10,
     num_plans: int = 5,
     debug_rounds: list[list] | None = None,
+    config: SearchConfig | None = None,
 ) -> CombatSolution:
     """Run full combat to completion. Evaluate num_plans distinct plans.
 
@@ -410,6 +421,7 @@ def solve_combat(
     for i in range(num_plans):
         solution = _run_single_combat(
             scenario, seed + i, max_rounds,
+            config=config,
             debug_rounds=debug_rounds if i == 0 else None,
         )
         solutions.append(solution)
@@ -457,6 +469,10 @@ def format_combat_solution(solution: CombatSolution) -> str:
                          f"(Turn EV: {turn.score_delta:.1f})")
             for i, action in enumerate(turn.actions, 1):
                 lines.append(f"  {i}. {action}")
+            # Verbose detail (per-action probability breakdown)
+            if turn.verbose_text:
+                for vline in turn.verbose_text.splitlines():
+                    lines.append(vline)
             # HP summary for living combatants
             hp_parts = [f"{n}: {hp}" for n, hp in turn.hp_summary.items()
                         if hp > 0]
