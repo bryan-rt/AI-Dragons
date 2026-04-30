@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-Phase C (NPC Importer + Goblin Ambush).
+Last updated: April 2026, post-CP11.2.1 (Stride Reachability Fix).
 
 ## Test Count
 
-**1110 tests passing.**
+**1131 tests passing.**
 
 ## Active Checkpoint
 
@@ -28,7 +28,7 @@ CP10.9 (Death/Dying System) is **COMPLETE**.
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 46 times (most recently at Phase C — NPC importer + goblin ambush).
+Verified 47 times (most recently at CP11.2.1 — stride reachability fix).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per

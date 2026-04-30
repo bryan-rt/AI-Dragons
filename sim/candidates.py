@@ -12,7 +12,10 @@ from __future__ import annotations
 from pf2e.actions import Action, ActionType
 from pf2e.combat_math import melee_reach_ft, max_hp
 from pf2e.tactics import FOLIO_TACTICS, PREPARED_TACTICS
-from sim.grid import GridState, Pos, distance_ft, is_within_reach, shortest_movement_cost
+from sim.grid import (
+    GridState, Pos, are_flanking, can_reach, distance_ft, is_within_reach,
+    shortest_movement_cost,
+)
 from sim.round_state import CombatantSnapshot, EnemySnapshot, RoundState
 
 
@@ -410,23 +413,24 @@ def _add_stride_candidates(
     actor_name: str, actions: list[Action],
     bfs_cache: dict | None,
 ) -> None:
-    """Add STRIDE actions using 5-category heuristic destinations.
+    """Add STRIDE actions using heuristic destination categories.
 
     Categories:
-    1. Aggressive: adjacent to living enemies (top 2)
-    2. Flanking: opposite ally adjacent to enemy (top 2)
-    3. Banner reposition: (commander only, deferred)
-    4. Defensive withdrawal: maximize distance from enemies (HP < 50%)
-    5. Adjacent to wounded ally (HP < 50%)
+    1. Aggressive: adjacent to living enemies
+    2. Defensive withdrawal: maximize distance from enemies (HP < 50%)
+    3. Adjacent to wounded ally (HP < 50%)
+    4. Kiting: within reach weapon range but outside 5ft enemy melee
+    5. Flanking setup: opposite side of enemy from adjacent ally
+    6. Mortar arc: standoff within mortar range
 
-    Max ~20 destinations total, deduplicated.
+    Max ~30 destinations total, deduplicated, filtered by can_reach.
     """
     occupied = _occupied_positions(state) - {actor.position}
     grid: GridState = state.grid  # type: ignore[assignment]
     speed = actor.current_speed if actor.current_speed is not None else actor.character.speed
     candidates: set[Pos] = set()
 
-    # 1. Aggressive: squares adjacent to living enemies
+    # Category 1: Aggressive — squares adjacent to living enemies
     for en_name, enemy in state.enemies.items():
         if enemy.current_hp <= 0:
             continue
@@ -441,7 +445,7 @@ def _add_stride_candidates(
         if len(candidates) >= 4:
             break
 
-    # 4. Defensive withdrawal: if HP < 50%, find a square far from enemies
+    # Category 2: Defensive withdrawal — if HP < 50%, far from enemies
     actor_max_hp = max_hp(actor.character)
     if actor_max_hp > 0 and actor.current_hp / actor_max_hp < 0.5:
         best_dist = -1
@@ -464,7 +468,7 @@ def _add_stride_candidates(
         if best_pos is not None:
             candidates.add(best_pos)
 
-    # 5. Adjacent to wounded ally
+    # Category 3: Adjacent to wounded ally
     for pc_name, pc in state.pcs.items():
         if pc_name == actor_name:
             continue
@@ -480,20 +484,108 @@ def _add_stride_candidates(
                         candidates.add(dest)
                         break  # One destination per wounded ally
 
-    # Filter by BFS reachability within speed
+    # Category 4: Kiting — within weapon reach but outside 5ft enemy melee
+    # For actors with reach > 5ft (Aetregan's Scorpion Whip = 10ft)
+    # (AoN: https://2e.aonprd.com/Traits.aspx?ID=684 — Reach)
+    reach = melee_reach_ft(actor.character)
+    if reach > 5:
+        kite_count = 0
+        for en_name, enemy in state.enemies.items():
+            if enemy.current_hp <= 0 or kite_count >= 8:
+                continue
+            er, ec = enemy.position
+            for dr in range(-4, 5):
+                for dc in range(-4, 5):
+                    if kite_count >= 8:
+                        break
+                    dest = (er + dr, ec + dc)
+                    if not (0 <= dest[0] < grid.rows and 0 <= dest[1] < grid.cols):
+                        continue
+                    if dest in occupied or dest in grid.walls:
+                        continue
+                    if not is_within_reach(dest, enemy.position, reach):
+                        continue
+                    # Must be outside standard melee reach (>5ft from ALL enemies)
+                    too_close = any(
+                        distance_ft(dest, e.position) <= 5
+                        for e in state.enemies.values() if e.current_hp > 0
+                    )
+                    if too_close:
+                        continue
+                    candidates.add(dest)
+                    kite_count += 1
+
+    # Category 5: Flanking setup — opposite side of enemy from adjacent ally
+    # Validates with are_flanking() for rules-correct geometry.
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2388 — Flanking)
+    flanking_added = 0
+    for en_name, enemy in state.enemies.items():
+        if enemy.current_hp <= 0 or flanking_added >= 4:
+            continue
+        adjacent_allies = [
+            pc for pname, pc in state.pcs.items()
+            if pname != actor_name
+            and pc.current_hp > 0
+            and distance_ft(pc.position, enemy.position) <= 5
+        ]
+        for ally in adjacent_allies:
+            if flanking_added >= 4:
+                break
+            ar, ac = ally.position
+            er, ec = enemy.position
+            dest = (2 * er - ar, 2 * ec - ac)
+            if not (0 <= dest[0] < grid.rows and 0 <= dest[1] < grid.cols):
+                continue
+            if dest in occupied or dest in grid.walls:
+                continue
+            if are_flanking(dest, enemy.position, ally.position):
+                candidates.add(dest)
+                flanking_added += 1
+
+    # Category 6: Mortar arc — standoff within mortar range, outside melee
+    # (AoN: https://2e.aonprd.com/Innovations.aspx?ID=4 — Light Mortar 120ft)
+    if actor.character.has_light_mortar:
+        MORTAR_RANGE_FT = 120
+        SAFE_DIST_FT = 10
+        mortar_best: Pos | None = None
+        mortar_best_score = -1
+        for dr in range(-8, 9):
+            for dc in range(-8, 9):
+                dest = (actor.position[0] + dr, actor.position[1] + dc)
+                if not (0 <= dest[0] < grid.rows and 0 <= dest[1] < grid.cols):
+                    continue
+                if dest in occupied or dest in grid.walls:
+                    continue
+                living_enemies = [e for e in state.enemies.values()
+                                  if e.current_hp > 0]
+                if not living_enemies:
+                    break
+                if not all(
+                    distance_ft(dest, e.position) <= MORTAR_RANGE_FT
+                    for e in living_enemies
+                ):
+                    continue
+                min_enemy_dist = min(
+                    distance_ft(dest, e.position) for e in living_enemies
+                )
+                if min_enemy_dist < SAFE_DIST_FT:
+                    continue
+                if min_enemy_dist > mortar_best_score:
+                    mortar_best_score = min_enemy_dist
+                    mortar_best = dest
+        if mortar_best is not None:
+            candidates.add(mortar_best)
+
+    # Filter by BFS reachability within speed (can_reach targets dest directly)
     valid: list[Pos] = []
     for dest in candidates:
         if dest == actor.position:
             continue
-        cost = shortest_movement_cost(
-            actor.position, dest,
-            occupied | grid.walls, grid,
-        )
-        if cost <= speed:
+        if can_reach(actor.position, dest, speed, occupied | grid.walls, grid):
             valid.append(dest)
 
-    # Cap at ~20
-    for dest in valid[:20]:
+    # Cap at ~30
+    for dest in valid[:30]:
         actions.append(Action(
             type=ActionType.STRIDE, actor_name=actor_name,
             action_cost=1, target_position=dest,
@@ -520,10 +612,8 @@ def _add_sneak_candidates(
                 dest = (enemy.position[0] + dr, enemy.position[1] + dc)
                 if (0 <= dest[0] < grid.rows and 0 <= dest[1] < grid.cols
                         and dest not in occupied and dest not in grid.walls):
-                    cost = shortest_movement_cost(
-                        actor.position, dest, occupied | grid.walls, grid,
-                    )
-                    if cost <= half_speed:
+                    if can_reach(actor.position, dest, half_speed,
+                                 occupied | grid.walls, grid):
                         actions.append(Action(
                             type=ActionType.SNEAK, actor_name=actor_name,
                             action_cost=1, target_position=dest,
@@ -598,7 +688,7 @@ def _enemy_candidates(state: RoundState, actor_name: str) -> list[Action]:
         if nearest_pc_name is not None:
             target_pos = state.pcs[nearest_pc_name].position
             # Find best square adjacent to the target PC within enemy speed
-            enemy_speed = 25  # standard enemy speed
+            enemy_speed = getattr(enemy, 'speed', 25)
             best_dest: Pos | None = None
             best_cost = 999
             for dr in (-1, 0, 1):

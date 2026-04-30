@@ -189,6 +189,7 @@ def _build_enemy(
             num_attacks_per_turn=int(spec.get("attacks", "2")),
             max_hp=int(spec.get("max_hp", "20")),
             perception_bonus=int(spec.get("perception", "4")),
+            speed=int(spec.get("speed", "25")),
             weaknesses=weaknesses,
             resistances=resistances,
         )
@@ -251,6 +252,7 @@ def _build_enemy_from_sheet(
         max_hp=npc._max_hp,
         current_hp=npc._max_hp,
         perception_bonus=npc._perception_total,
+        speed=npc.speed,
         weaknesses={},
         resistances={},
         character=npc,

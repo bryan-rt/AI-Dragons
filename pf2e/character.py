@@ -212,6 +212,10 @@ class EnemyState:
     # Perception for initiative and skill-check DCs
     perception_bonus: int = 4     # plausible L1 enemy default
 
+    # Movement speed in feet (default 25 = standard enemy speed)
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2153)
+    speed: int = 25
+
     # Action economy
     actions_remaining: int = 3
 

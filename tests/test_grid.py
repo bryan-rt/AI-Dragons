@@ -4,6 +4,7 @@ import pytest
 
 from sim.grid import (
     GridState,
+    can_reach,
     chebyshev_squares,
     distance_ft,
     is_adjacent,
@@ -280,3 +281,92 @@ class TestPathfindingSurrounded:
         }
         cost = shortest_movement_cost((0, 0), target, surrounders, grid)
         assert cost == 999
+
+
+# ---------------------------------------------------------------------------
+# Test: can_reach — BFS to destination (not adjacency)
+# ---------------------------------------------------------------------------
+
+class TestCanReach:
+    """Tests for can_reach(), which BFSes to dest directly.
+
+    Distinct from shortest_movement_cost which targets adjacency.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2153 — Speed)
+    """
+
+    def test_open_path(self) -> None:
+        """3-step path on open grid, speed=20 → True."""
+        grid = GridState(rows=10, cols=10)
+        assert can_reach((5, 2), (5, 5), 20, set(), grid) is True
+
+    def test_speed_too_low(self) -> None:
+        """4-step path, speed=15 → False."""
+        grid = GridState(rows=10, cols=10)
+        # (5,2) to (5,6) = 4 orthogonal steps = 20ft
+        assert can_reach((5, 2), (5, 6), 15, set(), grid) is False
+
+    def test_exact_boundary(self) -> None:
+        """4-step path, speed=20 → True (exactly at limit)."""
+        grid = GridState(rows=10, cols=10)
+        assert can_reach((5, 2), (5, 6), 20, set(), grid) is True
+
+    def test_dest_in_blocked(self) -> None:
+        """Destination in blocked set → False regardless of speed."""
+        grid = GridState(rows=10, cols=10)
+        blocked = {(5, 5)}
+        assert can_reach((5, 2), (5, 5), 25, blocked, grid) is False
+
+    def test_start_equals_dest(self) -> None:
+        """start == dest → True."""
+        grid = GridState(rows=10, cols=10)
+        assert can_reach((5, 5), (5, 5), 0, set(), grid) is True
+
+    def test_wall_blocks_direct_alternate_succeeds(self) -> None:
+        """Wall blocks direct 2-step path; 4-step detour within speed=25."""
+        grid = GridState(rows=5, cols=5, walls={(1, 2)})
+        # (1,1) to (1,3): direct path blocked by wall at (1,2).
+        # Detour: (1,1)->(0,2)->(1,3) = 2 diag steps = 10ft
+        assert can_reach((1, 1), (1, 3), 25, grid.walls, grid) is True
+
+    def test_wall_forces_detour_fails(self) -> None:
+        """Regression: wall forces detour exceeding speed.
+
+        This is the core bug case. shortest_movement_cost would return
+        the cost to reach a square adjacent to dest (off by one step),
+        but can_reach targets dest directly.
+        """
+        # Wall column blocking direct path
+        walls: set[tuple[int, int]] = set()
+        for r in range(5, 10):
+            walls.add((r, 5))
+        grid = GridState(rows=12, cols=12, walls=walls)
+        # Start (5,4), dest (7,9), speed 20.
+        # Must detour around wall column. Direct diagonal would be
+        # ~3 steps but wall blocks. Detour goes above or below wall.
+        # Wall spans rows 5-9 at col 5, so must go around (row 4 or 10).
+        # Going above: (5,4)->(4,5)->(4,6)-> ... costly.
+        # Key: actual BFS cost to (7,9) itself exceeds 20ft.
+        #
+        # Verify can_reach returns False for speed=20:
+        result = can_reach((5, 4), (7, 9), 20, walls, grid)
+        assert result is False
+        # But with more speed it should be reachable:
+        assert can_reach((5, 4), (7, 9), 40, walls, grid) is True
+
+    def test_can_reach_vs_shortest_movement_cost_difference(self) -> None:
+        """Demonstrate that can_reach and shortest_movement_cost differ.
+
+        shortest_movement_cost targets adjacency (any square next to dest).
+        can_reach targets dest itself. For the same dest, SMC may return
+        a lower cost because it can stop one square earlier.
+        """
+        grid = GridState(rows=10, cols=10)
+        start = (5, 2)
+        dest = (5, 6)
+        # SMC finds cost to adjacent-to-(5,6), which is (5,5) at 15ft
+        smc_cost = shortest_movement_cost(start, dest, set(), grid)
+        assert smc_cost == 15  # adjacent to dest
+        # can_reach at speed=15: dest is 20ft away, so False
+        assert can_reach(start, dest, 15, set(), grid) is False
+        # can_reach at speed=20: dest is exactly 20ft, True
+        assert can_reach(start, dest, 20, set(), grid) is True

@@ -165,6 +165,49 @@ def shortest_movement_cost(
     return 999
 
 
+def can_reach(
+    start: Pos,
+    dest: Pos,
+    speed: int,
+    blocked: set[Pos],
+    grid: GridState,
+) -> bool:
+    """Return True if dest is reachable from start within speed ft.
+
+    Uses uniform 5-ft BFS, matching shortest_movement_cost convention.
+    dest must not be in blocked to be reachable.
+    Distinct from shortest_movement_cost which BFSes to adjacency.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2153 — Speed)
+    """
+    if dest in blocked:
+        return False
+    if dest == start:
+        return True
+    visited: set[Pos] = {start}
+    queue: deque[tuple[Pos, int]] = deque([(start, 0)])
+    while queue:
+        pos, cost = queue.popleft()
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                if dr == 0 and dc == 0:
+                    continue
+                nxt = (pos[0] + dr, pos[1] + dc)
+                if nxt in visited:
+                    continue
+                if not (0 <= nxt[0] < grid.rows and 0 <= nxt[1] < grid.cols):
+                    continue
+                if nxt in blocked:
+                    continue
+                new_cost = cost + 5
+                if new_cost > speed:
+                    continue
+                if nxt == dest:
+                    return True
+                visited.add(nxt)
+                queue.append((nxt, new_cost))
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Flanking geometry
 # ---------------------------------------------------------------------------

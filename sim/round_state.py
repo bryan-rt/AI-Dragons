@@ -137,6 +137,7 @@ class EnemySnapshot:
     condition_durations: dict[str, int] = field(default_factory=dict)
     weaknesses: dict[str, int] = field(default_factory=dict)
     resistances: dict[str, int] = field(default_factory=dict)
+    speed: int = 25  # movement speed in feet
     character: object = None  # NPCData | None
 
     @classmethod
@@ -160,6 +161,7 @@ class EnemySnapshot:
             actions_remaining=state.actions_remaining,
             weaknesses=dict(state.weaknesses),
             resistances=dict(state.resistances),
+            speed=getattr(state, 'speed', 25),
             character=state.character,
         )
 

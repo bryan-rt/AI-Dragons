@@ -1,5 +1,24 @@
 # Changelog
 
+## [CP11.2.1] — 2026-04-30
+### Fixed
+- **Stride reachability bug** — `_add_stride_candidates` and `_add_sneak_candidates` called `shortest_movement_cost(pos, dest)` which returns cost-to-adjacent-to-dest, not cost-to-dest. Destinations 5ft beyond speed were incorrectly included. Rook was recommended moves he couldn't complete in terrain scenarios.
+- **Enemy speed hardcoded** — `_enemy_candidates` used `enemy_speed = 25` for all enemies. Now reads actual speed from `EnemySnapshot.speed`.
+
+### Added
+- **`can_reach()`** (`sim/grid.py`) — BFS to destination directly (not adjacency). Used by stride/sneak candidate generation.
+- **`EnemyState.speed`** / **`EnemySnapshot.speed`** — `int = 25`. Propagated from NPCData via `_build_enemy_from_sheet`. Flat-stat parser accepts optional `speed=` field.
+- **Kiting stride category** — positions within reach weapon range but outside 5ft enemy melee (Aetregan's 10ft Scorpion Whip).
+- **Flanking setup stride category** — positions opposite an adjacent ally, validated with `are_flanking()`.
+- **Mortar arc stride category** — standoff positions within 120ft of all enemies for Erisen's Light Mortar.
+- Stride destination cap raised 20 → 30.
+- `tests/test_stride_reach.py` (20 tests), 8 new `can_reach` tests in `test_grid.py`
+
+### Design Notes
+- `can_reach` uses uniform 5ft BFS (matches existing pathfinding convention)
+- `shortest_movement_cost` unchanged — still correct for "can I reach melee position on target" use case
+- EV 7.65 unchanged (47th verification)
+
 ## [Phase C] — 2026-04-30
 ### Added
 - **NPCData** (`pf2e/npc_data.py`) — pre-calculated NPC combat stats with override hooks for combat_math.py. Duck-type compatible with Character; PCs unchanged.
