@@ -18,27 +18,27 @@ if TYPE_CHECKING:
 MAX_LINE = 80
 
 
-def format_verbose_turn(plan: TurnPlan, pre_state: RoundState) -> str:
-    """Format one combatant's turn with per-action probability breakdown.
+def format_verbose_turn(
+    plan: TurnPlan, pre_state: RoundState,
+) -> list[str]:
+    """Format verbose detail per action. Returns list[str], one per action.
 
-    pre_state: RoundState AFTER _reset_turn_state, BEFORE the first action.
-    plan.intermediate_states[i]: state AFTER plan.actions[i].
-    Returns a multi-line string (no trailing newline), or "" if empty.
+    Each entry is the multi-line verbose block for that action, or ""
+    if that action has no verbose detail. Caller interleaves with labels.
     """
     if not plan.action_results:
-        return ""
+        return []
 
-    lines: list[str] = []
-    for i, (action, result) in enumerate(
+    result: list[str] = []
+    for i, (action, action_result) in enumerate(
         zip(plan.actions, plan.action_results)
     ):
         pre = pre_state if i == 0 else plan.intermediate_states[i - 1]
         post = plan.intermediate_states[i]
-        action_lines = format_verbose_action(
-            i + 1, action, result, pre, post)
-        lines.extend(action_lines)
-
-    return "\n".join(lines)
+        lines = format_verbose_action(
+            i + 1, action, action_result, pre, post)
+        result.append("\n".join(lines) if lines else "")
+    return result
 
 
 def format_verbose_action(

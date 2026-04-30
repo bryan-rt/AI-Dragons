@@ -44,7 +44,7 @@ class TurnLog:
     actions: list[str]
     score_delta: float
     hp_summary: dict[str, int]
-    verbose_text: str = ""
+    verbose_lines: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -321,11 +321,11 @@ def _run_single_combat(
 
             state = plan.resulting_state
 
-            # Compute verbose text while pre_turn_state is available
-            verbose_text = ""
+            # Compute verbose lines while pre_turn_state is available
+            verbose_lines: list[str] = []
             if config.verbose and plan.action_results:
                 from sim.verbose import format_verbose_turn
-                verbose_text = format_verbose_turn(
+                verbose_lines = format_verbose_turn(
                     plan, pre_turn_state)
 
             # Build turn log
@@ -336,7 +336,7 @@ def _run_single_combat(
                 actions=action_labels,
                 score_delta=plan.expected_score,
                 hp_summary=_hp_summary(state),
-                verbose_text=verbose_text,
+                verbose_lines=verbose_lines,
             )
             round_log.turns.append(turn_log)
 
@@ -450,10 +450,13 @@ def format_combat_solution(solution: CombatSolution) -> str:
                          f"(Turn EV: {turn.score_delta:.1f})")
             for i, action in enumerate(turn.actions, 1):
                 lines.append(f"  {i}. {action}")
-            # Verbose detail (per-action probability breakdown)
-            if turn.verbose_text:
-                for vline in turn.verbose_text.splitlines():
-                    lines.append(vline)
+                # Interleave verbose detail after each action label
+                if (turn.verbose_lines
+                        and i - 1 < len(turn.verbose_lines)):
+                    block = turn.verbose_lines[i - 1]
+                    if block:
+                        for vline in block.splitlines():
+                            lines.append(vline)
             # HP summary for living combatants
             hp_parts = [f"{n}: {hp}" for n, hp in turn.hp_summary.items()
                         if hp > 0]

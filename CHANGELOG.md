@@ -1,5 +1,9 @@
 # Changelog
 
+## [CP11.7.0 patch] — 2026-04-30
+### Fixed
+- **Verbose interleave** — verbose detail now appears under each individual action instead of as a block after all action labels. Changed `verbose_text: str` to `verbose_lines: list[str]` on `RoundRecommendation` and `TurnLog`. Formatters interleave each action's verbose block immediately after its label.
+
 ## [CP11.3 patch] — 2026-04-30
 ### Changed
 - **Initiative locking** — `solve_combat` rolls initiative once from `scenario.initiative_seed` (fallback to `seed` param). Removed `num_plans` parameter and 5-seed loop. `is_optimal=True` always set.

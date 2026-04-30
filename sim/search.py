@@ -895,7 +895,7 @@ class RoundRecommendation:
     expected_score: float
     top_alternatives: list[tuple[list[str], float]]
     reasoning: str
-    verbose_text: str = ""
+    verbose_lines: list[str] = field(default_factory=list)
 
 
 def format_recommendation(rec: RoundRecommendation) -> str:
@@ -904,9 +904,12 @@ def format_recommendation(rec: RoundRecommendation) -> str:
     lines.append(f"Best plan (EV {rec.expected_score:.2f}):")
     for i, action in enumerate(rec.actions, 1):
         lines.append(f"  {i}. {action}")
-    if rec.verbose_text:
-        for vline in rec.verbose_text.splitlines():
-            lines.append(vline)
+        # Interleave verbose detail immediately after each action label
+        if rec.verbose_lines and i - 1 < len(rec.verbose_lines):
+            block = rec.verbose_lines[i - 1]
+            if block:
+                for vline in block.splitlines():
+                    lines.append(vline)
     if rec.top_alternatives:
         lines.append("\nAlternatives:")
         for alt_actions, alt_score in rec.top_alternatives:
@@ -1011,12 +1014,12 @@ def _turn_plan_to_recommendation(
         f"kills={breakdown.kill_score:.0f}, drops={breakdown.drop_score:.0f}"
     )
 
-    verbose_text = ""
+    verbose_lines: list[str] = []
     if (config and config.verbose
             and plan.action_results
             and pre_turn_state is not None):
         from sim.verbose import format_verbose_turn
-        verbose_text = format_verbose_turn(plan, pre_turn_state)
+        verbose_lines = format_verbose_turn(plan, pre_turn_state)
 
     return RoundRecommendation(
         actor_name=plan.actor_name,
@@ -1024,7 +1027,7 @@ def _turn_plan_to_recommendation(
         expected_score=plan.expected_score,
         top_alternatives=[],
         reasoning=reasoning,
-        verbose_text=verbose_text,
+        verbose_lines=verbose_lines,
     )
 
 
