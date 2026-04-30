@@ -26,8 +26,14 @@ def max_hp(character: Character) -> int:
     Formula: ancestry_hp + (class_hp + Con modifier) x level.
     Returns 0 if the character has no HP data (both ancestry_hp and
     class_hp at default 0).
+    NPC override: npc_max_hp() returns pre-calculated total.
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2145)
     """
+    npc_fn = getattr(character, 'npc_max_hp', None)
+    if npc_fn is not None:
+        result = npc_fn()
+        if result is not None:
+            return result
     con_mod = character.abilities.mod(Ability.CON)
     return character.ancestry_hp + (character.class_hp + con_mod) * character.level
 
@@ -229,6 +235,17 @@ def attack_bonus(
     """
     char = state.character
     weapon = equipped.weapon
+    # NPC override: use pre-calculated attack total + dynamic modifiers
+    npc_fn = getattr(char, 'npc_attack_total', None)
+    if npc_fn is not None:
+        base = npc_fn(weapon.name)
+        if base is not None:
+            t = BonusTracker()
+            t.add(BonusType.UNTYPED, base, "npc_base")
+            t.add(BonusType.UNTYPED, map_penalty, "MAP")
+            t.add(BonusType.STATUS, -state.frightened, "frightened")
+            t.add(BonusType.STATUS, state.status_bonus_attack, "anthem")
+            return t.total()
     ability = attack_ability(char, weapon, thrown=thrown)
     ability_mod = char.abilities.mod(ability)
     prof = proficiency_bonus(
@@ -330,6 +347,22 @@ def armor_class(state: CombatantState) -> int:
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2140)
     """
     char = state.character
+    # NPC override: use pre-calculated AC total + dynamic modifiers
+    npc_fn = getattr(char, 'npc_ac_total', None)
+    if npc_fn is not None:
+        base = npc_fn()
+        if base is not None:
+            shield_bonus = (
+                char.shield.ac_bonus
+                if (char.shield and state.shield_raised) else 0
+            )
+            t = BonusTracker()
+            t.add(BonusType.UNTYPED, base, "npc_ac")
+            t.add(BonusType.CIRCUMSTANCE, shield_bonus, "shield")
+            if state.off_guard:
+                t.add(BonusType.CIRCUMSTANCE, -2, "off-guard")
+            t.add(BonusType.STATUS, -state.frightened, "frightened")
+            return t.total()
     dex_mod = char.abilities.mod(Ability.DEX)
     if char.armor and char.armor.dex_cap is not None:
         dex_mod = min(dex_mod, char.armor.dex_cap)
@@ -353,8 +386,14 @@ def armor_class(state: CombatantState) -> int:
 def class_dc(character: Character) -> int:
     """Class DC = 10 + key ability mod + proficiency.
 
+    NPC override: npc_class_dc() returns pre-calculated spell DC.
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2139)
     """
+    npc_fn = getattr(character, 'npc_class_dc', None)
+    if npc_fn is not None:
+        result = npc_fn()
+        if result is not None:
+            return result
     ability_mod = character.abilities.mod(character.key_ability)
     prof = proficiency_bonus(character.class_dc_rank, character.level)
     return 10 + ability_mod + prof
@@ -372,8 +411,14 @@ def siege_save_dc(operator: Character) -> int:
 def save_bonus(character: Character, save: SaveType) -> int:
     """Total saving throw bonus = ability mod + proficiency.
 
+    NPC override: npc_save_total() returns pre-calculated total.
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2131)
     """
+    npc_fn = getattr(character, 'npc_save_total', None)
+    if npc_fn is not None:
+        result = npc_fn(save)
+        if result is not None:
+            return result
     ability_map = {
         SaveType.FORTITUDE: Ability.CON,
         SaveType.REFLEX: Ability.DEX,
@@ -390,8 +435,14 @@ def save_bonus(character: Character, save: SaveType) -> int:
 def perception_bonus(character: Character) -> int:
     """Perception bonus = Wis mod + proficiency.
 
+    NPC override: npc_perception_total() returns pre-calculated total.
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2130)
     """
+    npc_fn = getattr(character, 'npc_perception_total', None)
+    if npc_fn is not None:
+        result = npc_fn()
+        if result is not None:
+            return result
     wis_mod = character.abilities.mod(Ability.WIS)
     prof = proficiency_bonus(character.perception_rank, character.level)
     t = BonusTracker()
@@ -405,8 +456,14 @@ def spell_attack_bonus(character: Character) -> int:
 
     At L1, spell attack proficiency equals class DC proficiency (Trained).
     Equivalent to class_dc(character) - 10.
+    NPC override: npc_spell_attack() returns pre-calculated total.
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2187)
     """
+    npc_fn = getattr(character, 'npc_spell_attack', None)
+    if npc_fn is not None:
+        result = npc_fn()
+        if result is not None:
+            return result
     ability_mod = character.abilities.mod(character.key_ability)
     prof = proficiency_bonus(character.class_dc_rank, character.level)
     t = BonusTracker()
@@ -419,8 +476,14 @@ def skill_bonus(character: Character, skill: Skill) -> int:
     """Total skill check bonus: ability mod + proficiency.
 
     Missing skill in skill_proficiencies defaults to UNTRAINED (0).
+    NPC override: npc_skill_total() returns pre-calculated total.
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2136)
     """
+    npc_fn = getattr(character, 'npc_skill_total', None)
+    if npc_fn is not None:
+        result = npc_fn(skill)
+        if result is not None:
+            return result
     ability = SKILL_ABILITY[skill]
     ability_mod = character.abilities.mod(ability)
     rank = character.skill_proficiencies.get(skill, ProficiencyRank.UNTRAINED)
