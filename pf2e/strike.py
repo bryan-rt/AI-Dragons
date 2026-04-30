@@ -345,7 +345,9 @@ def evaluate_enemy_strike(
 ) -> ActionResult:
     """Enemy Strike against a PC target. Applies MAP from map_count.
 
-    Agile enemy weapons deferred — no current L1 enemies have agile weapons.
+    When actor.character is an NPCData with equipped_weapons, routes to
+    _evaluate_npc_strike for chassis-unified weapon strike evaluation
+    (agile MAP, proper damage derivation).
     (AoN: https://2e.aonprd.com/Actions.aspx?ID=2322)
     (AoN MAP: https://2e.aonprd.com/Rules.aspx?ID=220)
     """
@@ -355,6 +357,13 @@ def evaluate_enemy_strike(
     if actor is None:
         return ActionResult(action=action, eligible=False,
                             ineligibility_reason="Actor not found as enemy")
+
+    # NPC sheet path: use unified weapon strike chassis
+    if (actor.character is not None
+            and getattr(actor.character, 'equipped_weapons', None)):
+        return _evaluate_npc_strike(action, state, actor)
+
+    # Legacy flat-stat path
     target = state.pcs.get(action.target_name)
     if target is None or target.current_hp <= 0:
         return ActionResult(action=action, eligible=False,
@@ -367,13 +376,10 @@ def evaluate_enemy_strike(
                             ineligibility_reason="Enemy has no modeled offense")
 
     # Apply MAP based on attacks already taken this turn
-    # Agile enemy weapons deferred — no current enemy has agile weapons at L1
     # (AoN: https://2e.aonprd.com/Traits.aspx?ID=404)
     penalty = map_penalty(actor.map_count + 1, agile=False)
     effective_bonus = actor.attack_bonus + penalty
 
-    # Enemy uses armor_class() for target AC (full derivation including
-    # shield, off-guard, frightened). Flanking stub feeds through here.
     target_ac = armor_class(target)
 
     # Parse NdX+B damage
@@ -388,6 +394,69 @@ def evaluate_enemy_strike(
     outcomes = build_strike_outcomes(effective_bonus, target_ac,
                                      hit_dmg, crit_dmg, action.target_name)
 
+    return ActionResult(action=action, outcomes=tuple(outcomes))
+
+
+def _evaluate_npc_strike(
+    action: Action, state: RoundState, actor,
+) -> ActionResult:
+    """NPC strike using equipped weapon data and override hooks.
+
+    Uses pre-calculated attack totals from NPCData and the same
+    probability math as PC strikes. Agile MAP applies correctly.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2322)
+    """
+    from pf2e.actions import ActionResult
+    from pf2e.combat_math import (
+        attack_bonus as _compute_atk, damage_avg as _compute_dmg,
+    )
+
+    target = state.pcs.get(action.target_name)
+    if target is None or target.current_hp <= 0:
+        return ActionResult(
+            action=action, eligible=False,
+            ineligibility_reason="Target not found or dead")
+
+    char = actor.character
+    # Select weapon: match by name or use first
+    equipped = char.equipped_weapons[0]
+    if action.weapon_name:
+        for eq in char.equipped_weapons:
+            if eq.weapon.name == action.weapon_name:
+                equipped = eq
+                break
+
+    # Reach check using weapon traits
+    reach = 5
+    if "reach" in equipped.weapon.traits:
+        reach = 10
+    if not _is_within_weapon_reach(actor.position, target.position, reach):
+        return ActionResult(
+            action=action, eligible=False,
+            ineligibility_reason="Target out of weapon reach")
+
+    # Build a minimal state-like object for combat_math functions
+    is_agile = equipped.weapon.is_agile
+    penalty = map_penalty(actor.map_count + 1, agile=is_agile)
+
+    class _NpcState:
+        """Minimal duck-type satisfying combat_math.attack_bonus/damage_avg."""
+        character = char
+        shield_raised = False
+        off_guard = actor.off_guard
+        frightened = 0
+        status_bonus_attack = 0
+        status_bonus_damage = 0
+
+    npc_state = _NpcState()
+    bonus = _compute_atk(npc_state, equipped, penalty)
+    target_ac = armor_class(target)
+
+    hit_dmg = _compute_dmg(npc_state, equipped)
+    crit_dmg = hit_dmg * 2
+
+    outcomes = build_strike_outcomes(
+        bonus, target_ac, hit_dmg, crit_dmg, action.target_name)
     return ActionResult(action=action, outcomes=tuple(outcomes))
 
 

@@ -137,6 +137,7 @@ class EnemySnapshot:
     condition_durations: dict[str, int] = field(default_factory=dict)
     weaknesses: dict[str, int] = field(default_factory=dict)
     resistances: dict[str, int] = field(default_factory=dict)
+    character: object = None  # NPCData | None
 
     @classmethod
     def from_enemy_state(cls, state: EnemyState) -> EnemySnapshot:
@@ -159,6 +160,7 @@ class EnemySnapshot:
             actions_remaining=state.actions_remaining,
             weaknesses=dict(state.weaknesses),
             resistances=dict(state.resistances),
+            character=state.character,
         )
 
 

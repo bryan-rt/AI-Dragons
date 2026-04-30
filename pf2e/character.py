@@ -220,6 +220,9 @@ class EnemyState:
     weaknesses: dict[str, int] = field(default_factory=dict)
     resistances: dict[str, int] = field(default_factory=dict)
 
+    # NPCData sheet (None for flat-stat enemies)
+    character: object = None  # NPCData | None; object avoids circular import
+
     @property
     def perception_dc(self) -> int:
         """DC for Deception/Stealth checks against this enemy."""
