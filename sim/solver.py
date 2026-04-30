@@ -406,43 +406,24 @@ def solve_combat(
     scenario: Scenario,
     seed: int = 42,
     max_rounds: int = 10,
-    num_plans: int = 5,
     debug_rounds: list[list] | None = None,
     config: SearchConfig | None = None,
 ) -> CombatSolution:
-    """Run full combat to completion. Evaluate num_plans distinct plans.
+    """Run combat to completion with initiative locked to scenario seed.
 
-    Plans are seeded with [seed, seed+1, ..., seed+num_plans-1].
-    Diversity comes from different initiative orders per seed.
-    Note: if seeds produce identical initiative orders, plans may be similar.
-    True first-action branching is a CP7 enhancement.
+    Initiative is rolled once using scenario.initiative_seed for
+    reproducibility. If the scenario does not specify an initiative seed,
+    the `seed` parameter is used as fallback (set via --seed on CLI).
+    Tactical diversity comes from beam K=50 depth-1 branching.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2423)
     """
-    solutions: list[CombatSolution] = []
-    for i in range(num_plans):
-        solution = _run_single_combat(
-            scenario, seed + i, max_rounds,
-            config=config,
-            debug_rounds=debug_rounds if i == 0 else None,
-        )
-        solutions.append(solution)
-        logger.info(
-            f"Plan {i+1}/{num_plans} (seed={seed+i}): "
-            f"{solution.outcome} in {solution.rounds_taken}r, "
-            f"score={solution.total_score:.1f}"
-        )
-
-    # Pick best winning plan
-    winning = [s for s in solutions if s.outcome == "victory"]
-    if winning:
-        best = max(winning, key=lambda s: s.total_score)
-        return dataclasses.replace(best, is_optimal=True)
-
-    # No winning plan — return highest-scoring failure
-    best_failed = max(solutions, key=lambda s: s.total_score)
-    return dataclasses.replace(
-        best_failed, outcome="impossible",
-        difficulty_rating="impossible", is_optimal=False,
+    initiative_seed = getattr(scenario, 'initiative_seed', seed)
+    solution = _run_single_combat(
+        scenario, initiative_seed, max_rounds,
+        config=config,
+        debug_rounds=debug_rounds,
     )
+    return dataclasses.replace(solution, is_optimal=True)
 
 
 # ---------------------------------------------------------------------------

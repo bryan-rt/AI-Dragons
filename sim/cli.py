@@ -24,7 +24,12 @@ def main(argv: list[str] | None = None) -> None:
         "--scenario", required=True, help="Path to .scenario file",
     )
     parser.add_argument(
-        "--seed", type=int, default=42, help="RNG seed (default: 42)",
+        "--seed", type=int, default=42,
+        help=(
+            "Initiative seed fallback when scenario does not specify "
+            "[initiative] seed (default: 42). For full reproducibility, "
+            "set 'seed = N' in the scenario [initiative] section."
+        ),
     )
     parser.add_argument(
         "--full-combat", action="store_true",

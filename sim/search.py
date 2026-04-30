@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 # ActionTypes with the attack trait (increment MAP)
 _ATTACK_TRAIT_TYPES = frozenset({
     ActionType.STRIKE, ActionType.TRIP, ActionType.DISARM,
+    ActionType.MORTAR_LAUNCH,  # has attack trait per innovation rules
+    # CAST_SPELL handled conditionally in _update_action_economy
+    # (only SpellPattern.ATTACK_ROLL spells have the attack trait)
 })
 
 # ---------------------------------------------------------------------------
@@ -822,6 +825,11 @@ def simulate_round(
         from pf2e.conditions import process_end_of_turn
         current = process_end_of_turn(current, name)
 
+        # Early exit: stop when all enemies defeated mid-round.
+        # Prevents PCs from taking no-op turns after combat ends.
+        if all(e.current_hp <= 0 for e in current.enemies.values()):
+            break
+
     logger.info(
         f"simulate_round: {len(plans)} turns, "
         f"final score={score_state(current, initial):.2f}"
@@ -848,8 +856,21 @@ def _update_action_economy(
         }
         if action.type in _ATTACK_TRAIT_TYPES:
             updates["map_count"] = pc.map_count + 1
+        # CAST_SPELL: only attack-roll pattern spells have the attack trait.
+        # Force Barrage (AUTO_HIT) and Fear (SAVE_OR_CONDITION) do not.
+        # Needle Darts (ATTACK_ROLL) does.
+        # Lazy import avoids circular dependency at module level.
+        # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2188)
+        if action.type == ActionType.CAST_SPELL:
+            from pf2e.spells import SPELL_REGISTRY, SpellPattern
+            defn = SPELL_REGISTRY.get(action.tactic_name)
+            if defn and defn.pattern == SpellPattern.ATTACK_ROLL:
+                updates["map_count"] = pc.map_count + 1
         return state.with_pc_update(actor_name, **updates)
     elif actor_name in state.enemies:
+        # Enemy branch: MORTAR_LAUNCH handled via _ATTACK_TRAIT_TYPES above.
+        # CAST_SPELL for enemy attack-roll spells deferred — no current
+        # enemy uses attack-roll spells.
         enemy = state.enemies[actor_name]
         new_map = enemy.map_count
         if action.type in _ATTACK_TRAIT_TYPES:

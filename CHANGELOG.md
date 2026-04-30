@@ -1,5 +1,15 @@
 # Changelog
 
+## [CP11.3 patch] — 2026-04-30
+### Changed
+- **Initiative locking** — `solve_combat` rolls initiative once from `scenario.initiative_seed` (fallback to `seed` param). Removed `num_plans` parameter and 5-seed loop. `is_optimal=True` always set.
+- **Early exit** — `simulate_round` breaks when all enemies dead mid-round. PCs no longer take no-op turns after last enemy killed.
+- **MAP completeness** — `MORTAR_LAUNCH` added to `_ATTACK_TRAIT_TYPES`. `CAST_SPELL` conditionally increments MAP for `ATTACK_ROLL` pattern spells only (Needle Darts yes, Force Barrage/Fear no).
+
+### Design Notes
+- `--seed` CLI flag repurposed as initiative fallback for scenarios without `[initiative] seed`
+- EV 7.65 unchanged (42nd verification)
+
 ## [CP11.7.0] — 2026-04-30
 ### Added
 - `--verbose` CLI flag — shows per-action probability breakdown (MAP, attack bonus, target AC, hit/miss/crit probabilities, EV, HP delta) for all combatants including enemies

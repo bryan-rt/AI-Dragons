@@ -182,7 +182,7 @@ def test_full_combat_verbose():
     scenario = load_scenario(SCENARIO)
     config = SearchConfig(verbose=True)
     solution = solve_combat(
-        scenario, seed=42, max_rounds=10, num_plans=1, config=config)
+        scenario, seed=42, max_rounds=10, config=config)
     found = False
     for rlog in solution.rounds:
         for turn in rlog.turns:

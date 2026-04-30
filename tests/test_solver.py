@@ -141,33 +141,33 @@ class TestSolveCombat:
 
     def test_solve_combat_victory(self) -> None:
         scenario = load_scenario("scenarios/checkpoint_2_two_bandits.scenario")
-        solution = solve_combat(scenario, seed=42, max_rounds=10, num_plans=1)
+        solution = solve_combat(scenario, seed=42, max_rounds=10)
         assert solution.outcome == "victory"
         assert solution.rounds_taken <= 10
 
     def test_solve_combat_has_round_logs(self) -> None:
         scenario = load_scenario("scenarios/checkpoint_2_two_bandits.scenario")
-        solution = solve_combat(scenario, seed=42, num_plans=1)
+        solution = solve_combat(scenario, seed=42)
         assert len(solution.rounds) > 0
         assert len(solution.rounds[0].turns) > 0
 
     def test_solve_combat_round_cap(self) -> None:
         """Very short max_rounds forces timeout or fast victory."""
         scenario = load_scenario("scenarios/checkpoint_2_two_bandits.scenario")
-        solution = solve_combat(scenario, seed=42, max_rounds=1, num_plans=1)
+        solution = solve_combat(scenario, seed=42, max_rounds=1)
         # With 1 round max, likely can't kill both bandits
         assert solution.rounds_taken <= 1
 
     def test_solve_combat_returns_optimal(self) -> None:
         scenario = load_scenario("scenarios/checkpoint_2_two_bandits.scenario")
-        solution = solve_combat(scenario, seed=42, num_plans=3)
+        solution = solve_combat(scenario, seed=42)
         if solution.outcome == "victory":
             assert solution.is_optimal
 
     def test_solve_combat_skips_dead(self) -> None:
         """Dead combatants should not appear in later round turn logs."""
         scenario = load_scenario("scenarios/checkpoint_2_two_bandits.scenario")
-        solution = solve_combat(scenario, seed=42, num_plans=1)
+        solution = solve_combat(scenario, seed=42)
         if solution.rounds_taken >= 2:
             # In round 2, any combatant killed in round 1 should be absent
             round1_dead = set()
