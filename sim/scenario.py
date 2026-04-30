@@ -39,7 +39,7 @@ from pathlib import Path
 from pf2e.character import CombatantState, EnemyState
 from pf2e.detection import LightLevel, LightSource
 from pf2e.tactics import TacticContext
-from pf2e.types import SaveType
+from pf2e.types import Ability, SaveType
 from sim.grid import GridState, Pos, parse_map
 from sim.grid_spatial import GridSpatialQueries
 from sim.party import (
@@ -147,7 +147,13 @@ def _build_combatant(
 def _build_enemy(
     token: str, spec: dict[str, str], pos: Pos,
 ) -> EnemyState:
-    """Build an EnemyState from parsed key=value spec."""
+    """Build an EnemyState from parsed key=value spec.
+
+    If spec contains 'sheet=<slug>', loads the NPC JSON and builds
+    EnemyState from pre-calculated stats. Otherwise uses flat-stat path.
+    """
+    if "sheet" in spec:
+        return _build_enemy_from_sheet(token, spec, pos)
     required = ("name", "ac", "ref", "fort", "will")
     missing = [k for k in required if k not in spec]
     if missing:
@@ -190,6 +196,65 @@ def _build_enemy(
         raise ScenarioParseError(
             f"Enemy '{token}': invalid integer in stats: {e}"
         ) from e
+
+
+def _build_enemy_from_sheet(
+    token: str, spec: dict[str, str], pos: Pos,
+) -> EnemyState:
+    """Build EnemyState from a Foundry NPC JSON sheet reference.
+
+    Spec must contain sheet=<slug>. Resolves to
+    characters/enemies/<slug>.json. Optional name= overrides the
+    JSON name.
+    """
+    from pathlib import Path
+    from sim.importers.foundry_npc import import_foundry_npc
+
+    slug = spec["sheet"]
+    search_paths = [
+        Path("characters/enemies") / f"{slug}.json",
+        Path(slug) if slug.endswith(".json") else None,
+    ]
+    json_path = next(
+        (p for p in search_paths if p is not None and p.exists()), None)
+    if json_path is None:
+        raise ScenarioParseError(
+            f"Enemy sheet not found: '{slug}'. "
+            f"Expected at characters/enemies/{slug}.json"
+        )
+
+    npc = import_foundry_npc(str(json_path))
+    name = spec.get("name", npc.name)
+
+    # Derive flat stats from NPCData for EnemyState compatibility
+    best_atk = max(npc._attack_totals.values(), default=0)
+    first_weapon = (npc.equipped_weapons[0]
+                    if npc.equipped_weapons else None)
+    dmg_die = first_weapon.weapon.damage_die if first_weapon else "1d4"
+    dmg_die_count = (first_weapon.weapon.damage_die_count
+                     if first_weapon else 1)
+    dmg_dice_str = (f"{dmg_die_count}{dmg_die}"
+                    if dmg_die_count > 0 else "1d4")
+    dmg_bonus = 0
+    if first_weapon:
+        dmg_bonus = npc.abilities.mod(Ability.STR)
+
+    return EnemyState(
+        name=name,
+        ac=npc._ac_total,
+        saves=dict(npc._save_totals),
+        position=pos,
+        attack_bonus=best_atk,
+        damage_dice=dmg_dice_str,
+        damage_bonus=dmg_bonus,
+        num_attacks_per_turn=min(len(npc.equipped_weapons), 3) or 1,
+        max_hp=npc._max_hp,
+        current_hp=npc._max_hp,
+        perception_bonus=npc._perception_total,
+        weaknesses={},
+        resistances={},
+        character=npc,
+    )
 
 
 def _split_into_sections(text: str) -> dict[str, str]:

@@ -1,0 +1,36 @@
+# goblin_ambush.scenario
+# Goblin Ambush — Phase C end-to-end test
+# Level 1 party of 4 vs 3 goblins (~80 XP, moderate encounter)
+# Tests: sheet= syntax, agile MAP, natural attacks, spellcaster load
+#
+# Grid: c=commander(Aetregan) g=guardian(Rook) b=bard(Dalai) i=inventor(Erisen)
+# m1=Goblin Warrior, m2=Goblin War Chanter, M1=Goblin Dog
+
+[meta]
+name = Goblin Ambush
+level = 1
+
+[grid]
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+. . c g . . . m . .
+. . b i . . . m . .
+. . . . . . . M . .
+. . . . . . . . . .
+. . . . . . . . . .
+. . . . . . . . . .
+
+[banner]
+planted = false
+
+[anthem]
+active = false
+
+[enemies]
+m1 sheet=goblin-warrior
+m2 sheet=goblin-war-chanter
+M1 sheet=goblin-dog
+
+[initiative]
+seed = 77

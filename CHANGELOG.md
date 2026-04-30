@@ -1,5 +1,23 @@
 # Changelog
 
+## [Phase C] — 2026-04-30
+### Added
+- **NPCData** (`pf2e/npc_data.py`) — pre-calculated NPC combat stats with override hooks for combat_math.py. Duck-type compatible with Character; PCs unchanged.
+- **NPC importer** (`sim/importers/foundry_npc.py`) — `import_foundry_npc()` loads Foundry VTT NPC JSONs. Parses abilities (modifier-only), melee attack totals, spellcasting, skills, vision. Creates synthetic EquippedWeapon for natural attacks (Goblin Dog Jaws).
+- **`sheet=` scenario syntax** — `[enemies]` section supports `sheet=goblin-warrior` to load NPC stats from `characters/enemies/<slug>.json` instead of inline flat stats.
+- **Goblin Ambush scenario** (`scenarios/goblin_ambush.scenario`) — 4 PCs vs Goblin Warrior + War Chanter + Goblin Dog. End-to-end test for NPC sheet loading.
+- **NPC strike chassis** (`pf2e/strike.py`) — `_evaluate_npc_strike()` routes NPC-sheet enemies through unified weapon strike with agile MAP and proper damage derivation.
+- 7 `combat_math.py` override hooks: max_hp, attack_bonus, armor_class, save_bonus, perception_bonus, class_dc, spell_attack_bonus, skill_bonus
+- `EnemyState.character` + `EnemySnapshot.character` fields (object, default None)
+- `tests/test_npc_data.py` (22 tests), `tests/test_npc_importer.py` (28 tests), `tests/test_goblin_ambush.py` (14 tests)
+
+### Design Notes
+- Override hooks use `getattr(char, 'npc_X', None)` — zero import coupling between combat_math and NPCData
+- NPC JSONs store modifiers only; synthetic AbilityScores use `mod * 2 + 10`
+- Proficiency back-calculation avoided entirely; pre-calculated totals used via hooks
+- Goblin Scuttle, Goblin Pox, Goblin Song deferred (no chassis support)
+- EV 7.65 unchanged (46th verification)
+
 ## [CP11.7.0 patch] — 2026-04-30
 ### Fixed
 - **Verbose interleave** — verbose detail now appears under each individual action instead of as a block after all action labels. Changed `verbose_text: str` to `verbose_lines: list[str]` on `RoundRecommendation` and `TurnLog`. Formatters interleave each action's verbose block immediately after its label.
