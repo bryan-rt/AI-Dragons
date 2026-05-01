@@ -1,5 +1,21 @@
 # Changelog
 
+## [CP11.2.2] — 2026-05-01
+### Fixed
+- **Caster enemies idled (F1)** — `_enemy_candidates` returned `[END_TURN]` for enemies with `damage_dice=""` but non-empty `known_spells`. War Chanter now generates stride candidates.
+- **`test_solve_combat_skips_dead` fragility** — test checked all round 1 HP summaries; now only checks dead enemies (PCs at 0 HP may still act via dying system).
+
+### Added
+- **`_enemy_target_priority()`** — scoring function for stride target selection: wounded bonus (+10 at 0%), off-guard bonus (+4), Guardian proximity penalty (-6), distance penalty.
+- **`_enemy_melee_reach()`** — derives melee reach from NPCData weapon traits. Flat-stat enemies always 5ft, reach weapons give 10ft.
+- **`_enemy_preferred_range()`** — max spell range for casters (from SPELL_REGISTRY), melee reach for non-casters.
+- **`_best_adjacent_dest()`** — extracted helper for finding cheapest reachable adjacent square.
+- **Reach-aware Strike** — `is_within_reach()` replaces hardcoded `distance_ft <= 5`.
+- **Priority-based stride target** — highest-priority PC (not just nearest) determines approach destination.
+- **Caster standoff positioning** — caster enemies orbit at spell range ≥10ft from PCs, tiered fallback (15→10→5ft), falls back to approach if no standoff.
+- **Flanking setup stride** — stride to flank when ally enemy is adjacent to PC, validated with `are_flanking()`.
+- 11 new tests (1155 → 1166), EV 7.65 (50th verification)
+
 ## [CP11.7.1] — 2026-05-01
 ### Fixed
 - **AED helpers hardcoded PC-as-actor** — `_avg_enemy_attack_ev` and `_avg_ally_damage` assumed the actor was always a PC. NPC evaluating Trip or Fear used wrong faction for opposing/allied pools.

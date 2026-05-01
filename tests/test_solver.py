@@ -165,18 +165,22 @@ class TestSolveCombat:
             assert solution.is_optimal
 
     def test_solve_combat_skips_dead(self) -> None:
-        """Dead combatants should not appear in later round turn logs."""
+        """Dead enemies should not appear in later round turn logs.
+
+        Note: PCs at 0 HP may still get turns (dying system processes
+        recovery checks). This test only verifies dead *enemies* are
+        skipped, since enemies die immediately at 0 HP (no dying state).
+        """
         scenario = load_scenario("scenarios/checkpoint_2_two_bandits.scenario")
         solution = solve_combat(scenario, seed=42)
         if solution.rounds_taken >= 2:
-            # In round 2, any combatant killed in round 1 should be absent
-            round1_dead = set()
-            for turn in solution.rounds[0].turns:
-                for name, hp in turn.hp_summary.items():
-                    if hp <= 0:
-                        round1_dead.add(name)
+            last_turn = solution.rounds[0].turns[-1]
+            round1_dead_enemies = {
+                name for name, hp in last_turn.hp_summary.items()
+                if hp <= 0 and name.startswith("Bandit")
+            }
             round2_actors = {t.combatant_name for t in solution.rounds[1].turns}
-            assert round1_dead.isdisjoint(round2_actors)
+            assert round1_dead_enemies.isdisjoint(round2_actors)
 
 
 class TestDifficultyRating:

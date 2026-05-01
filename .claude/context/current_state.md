@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: May 2026, post-CP11.7.1 (Faction-Agnostic AED).
+Last updated: May 2026, post-CP11.2.2 (Enemy Movement Prediction).
 
 ## Test Count
 
-**1155 tests passing.**
+**1166 tests passing.**
 
 ## Active Checkpoint
 
@@ -28,7 +28,20 @@ CP10.9 (Death/Dying System) is **COMPLETE**.
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 49 times (most recently at CP11.7.1 — faction-agnostic AED).
+Verified 50 times (most recently at CP11.2.2 — enemy movement prediction).
+
+## CP11.2.2 Status — COMPLETE
+
+Improved enemy decision quality: priority-based targeting (wounded, off-guard,
+Guardian avoidance), reach-aware strikes, caster standoff positioning, flanking
+setup. Fixed F1: caster-only enemies (damage_dice="", known_spells set) were
+returning [END_TURN].
+
+Key helpers: _enemy_target_priority, _enemy_melee_reach, _enemy_preferred_range,
+_best_adjacent_dest. Stride categories: best-target approach, caster standoff
+(tiered 15→10→5ft fallback), flanking setup via are_flanking.
+
+1155 → 1166 tests. EV 7.65 verified (50th).
 
 ## CP11.7.1 Status — COMPLETE
 

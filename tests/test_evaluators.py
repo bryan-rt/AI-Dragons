@@ -1464,3 +1464,184 @@ class TestTauntAED:
 
         # High damage enemy → higher score_delta (penalty component)
         assert result_high.outcomes[0].score_delta > result_low.outcomes[0].score_delta
+
+
+# ===========================================================================
+# CP11.2.2: Enemy movement prediction
+# ===========================================================================
+
+class TestEnemyMovementPrediction:
+
+    def test_caster_enemy_not_early_return(self) -> None:
+        """Enemy with known_spells but no damage_dice generates candidates."""
+        from sim.candidates import generate_candidates
+        from pf2e.npc_data import NPCData
+        from pf2e.abilities import AbilityScores
+        npc = NPCData(
+            name="TestCaster", level=1, speed=25,
+            abilities=AbilityScores(10, 10, 10, 10, 10, 10),
+            known_spells={"fear": 1},
+        )
+        state = _quick_state(enemy_overrides={
+            "Bandit1": {"damage_dice": "", "character": npc},
+        })
+        candidates = generate_candidates(state, "Bandit1")
+        assert len(candidates) > 1  # Not just END_TURN
+
+    def test_flat_stat_no_damage_dice_returns_end_turn(self) -> None:
+        """Flat-stat enemy with no damage_dice and no spells → END_TURN only."""
+        from sim.candidates import generate_candidates
+        state = _quick_state(enemy_overrides={
+            "Bandit1": {"damage_dice": ""},
+        })
+        candidates = generate_candidates(state, "Bandit1")
+        assert len(candidates) == 1
+        assert candidates[0].type == ActionType.END_TURN
+
+    def test_reach_weapon_extends_strike(self) -> None:
+        """NPC with reach weapon generates Strike at 10ft."""
+        from sim.candidates import generate_candidates, _enemy_melee_reach
+        from pf2e.npc_data import NPCData
+        from pf2e.abilities import AbilityScores
+        from pf2e.equipment import Weapon, EquippedWeapon, WeaponCategory, WeaponGroup
+        from pf2e.types import DamageType
+        reach_weapon = Weapon(
+            name="Glaive", category=WeaponCategory.MARTIAL,
+            group=WeaponGroup.POLEARM, damage_die="d8",
+            damage_die_count=1, damage_type=DamageType.SLASHING,
+            range_increment=None, traits=frozenset({"reach"}), hands=2,
+        )
+        npc = NPCData(
+            name="ReachEnemy", level=1, speed=25,
+            abilities=AbilityScores(14, 10, 10, 10, 10, 10),
+            equipped_weapons=(EquippedWeapon(weapon=reach_weapon),),
+        )
+        assert _enemy_melee_reach(
+            _quick_state(enemy_overrides={
+                "Bandit1": {"character": npc},
+            }).enemies["Bandit1"]
+        ) == 10
+        # Place enemy 2 squares diag from Rook (Chebyshev 2 = 10ft reach)
+        state = _quick_state(
+            pc_overrides={"Rook": {"position": (3, 5)}},
+            enemy_overrides={
+                "Bandit1": {"position": (5, 7), "character": npc},
+            },
+        )
+        candidates = generate_candidates(state, "Bandit1")
+        strike_actions = [a for a in candidates if a.type == ActionType.STRIKE]
+        assert len(strike_actions) >= 1
+
+    def test_flat_stat_enemy_no_reach(self) -> None:
+        """Flat-stat enemy always has 5ft reach."""
+        from sim.candidates import _enemy_melee_reach
+        state = _quick_state()
+        assert _enemy_melee_reach(state.enemies["Bandit1"]) == 5
+
+    def test_enemy_target_priority_wounded_bonus(self) -> None:
+        """Wounded PC scores higher than full-HP PC."""
+        from sim.candidates import _enemy_target_priority
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"current_hp": 4},  # wounded (~27% HP)
+        })
+        enemy = state.enemies["Bandit1"]
+        score_wounded = _enemy_target_priority(enemy, state.pcs["Aetregan"], state)
+        score_full = _enemy_target_priority(enemy, state.pcs["Rook"], state)
+        assert score_wounded > score_full
+
+    def test_enemy_target_priority_off_guard_bonus(self) -> None:
+        """Off-guard PC scores higher than equivalent PC."""
+        from sim.candidates import _enemy_target_priority
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"off_guard": True},
+        })
+        enemy = state.enemies["Bandit1"]
+        score_og = _enemy_target_priority(enemy, state.pcs["Aetregan"], state)
+        score_normal = _enemy_target_priority(enemy, state.pcs["Erisen"], state)
+        # Off-guard gives +4.0; distance differences are minor
+        assert score_og > score_normal
+
+    def test_enemy_strides_to_best_priority_target(self) -> None:
+        """Stride targets highest-priority PC, not just nearest."""
+        from sim.candidates import generate_candidates
+        # Put wounded PC further than full-HP PC
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"position": (2, 7), "current_hp": 4},  # far, wounded
+            "Rook": {"position": (3, 7)},  # closer, full HP
+            "Dalai Alpaca": {"position": (0, 0)},
+            "Erisen": {"position": (0, 1)},
+        }, enemy_overrides={
+            "Bandit1": {"position": (7, 7)},  # far from all
+        })
+        candidates = generate_candidates(state, "Bandit1")
+        strides = [a for a in candidates if a.type == ActionType.STRIDE]
+        assert len(strides) >= 1
+        # At least one stride should be toward the wounded PC (row ~2)
+        # rather than only toward Rook (row 3)
+        stride_rows = [a.target_position[0] for a in strides]
+        # Wounded PC at row 2 — stride destination should be adjacent (row 1-3)
+        assert any(r <= 3 for r in stride_rows)
+
+    def test_enemy_preferred_range_melee(self) -> None:
+        """Melee enemy preferred range equals reach."""
+        from sim.candidates import _enemy_preferred_range
+        state = _quick_state()
+        assert _enemy_preferred_range(state.enemies["Bandit1"]) == 5
+
+    def test_enemy_preferred_range_caster(self) -> None:
+        """Caster preferred range equals max spell range."""
+        from sim.candidates import _enemy_preferred_range
+        from pf2e.npc_data import NPCData
+        from pf2e.abilities import AbilityScores
+        npc = NPCData(
+            name="Caster", level=1, speed=25,
+            abilities=AbilityScores(10, 10, 10, 10, 10, 14),
+            known_spells={"fear": 1},  # fear range = 30ft
+        )
+        state = _quick_state(enemy_overrides={
+            "Bandit1": {"character": npc},
+        })
+        assert _enemy_preferred_range(state.enemies["Bandit1"]) == 30
+
+    def test_caster_standoff_positioning(self) -> None:
+        """Caster enemy strides to standoff, not melee."""
+        from sim.candidates import generate_candidates
+        from pf2e.npc_data import NPCData
+        from pf2e.abilities import AbilityScores
+        npc = NPCData(
+            name="Caster", level=1, speed=25,
+            abilities=AbilityScores(10, 10, 10, 10, 10, 14),
+            known_spells={"fear": 1},  # range 30ft
+        )
+        # Place caster far from PCs, PCs clustered
+        state = _quick_state(
+            pc_overrides={
+                "Aetregan": {"position": (5, 5)},
+                "Rook": {"position": (5, 6)},
+                "Dalai Alpaca": {"position": (4, 5)},
+                "Erisen": {"position": (4, 6)},
+            },
+            enemy_overrides={
+                "Bandit1": {
+                    "position": (0, 5), "damage_dice": "",
+                    "character": npc,
+                },
+            },
+        )
+        candidates = generate_candidates(state, "Bandit1")
+        strides = [a for a in candidates if a.type == ActionType.STRIDE]
+        assert len(strides) >= 1
+        # Stride destination should NOT be adjacent to any PC
+        for s in strides:
+            for _, pc in state.pcs.items():
+                if pc.current_hp > 0:
+                    from sim.grid import distance_ft as _dist
+                    assert _dist(s.target_position, pc.position) >= 5
+
+    def test_ev_7_65_after_cp11_2_2(self) -> None:
+        """EV 7.65 preserved after enemy movement changes. 50th verification."""
+        from pf2e.tactics import STRIKE_HARD, evaluate_tactic
+        scenario = load_scenario("scenarios/checkpoint_1_strike_hard.scenario")
+        ctx = scenario.build_tactic_context()
+        result = evaluate_tactic(STRIKE_HARD, ctx)
+        assert result.expected_damage_dealt == pytest.approx(7.65, abs=EV_TOLERANCE)

@@ -646,74 +646,249 @@ def _add_tactic_candidates(
 # Enemy candidate generation
 # ---------------------------------------------------------------------------
 
+def _enemy_target_priority(
+    enemy: EnemySnapshot,
+    pc: CombatantSnapshot,
+    state: RoundState,
+) -> float:
+    """Score for this enemy targeting this PC. Higher = more attractive.
+
+    Used for stride destination selection only — all in-reach PCs get
+    Strike candidates regardless.
+    """
+    score = 0.0
+
+    # Wounded bonus: prefer targets closer to death
+    pc_max = max_hp(pc.character)
+    if pc_max > 0:
+        score += (1.0 - pc.current_hp / pc_max) * 10.0
+
+    # Off-guard or prone: +2 attack is valuable
+    if pc.off_guard or pc.prone:
+        score += 4.0
+
+    # Guardian penalty: Intercept Attack risks redirection
+    for _ally_name, ally_pc in state.pcs.items():
+        if ally_pc.current_hp <= 0:
+            continue
+        if not getattr(ally_pc.character, 'guardian_reactions', 0):
+            continue
+        if (distance_ft(ally_pc.position, pc.position) <= 10
+                and ally_pc.guardian_reactions_available > 0):
+            score -= 6.0
+
+    # Distance penalty: closer is better
+    score -= distance_ft(enemy.position, pc.position) * 0.1
+
+    return score
+
+
+def _enemy_melee_reach(enemy: EnemySnapshot) -> int:
+    """Return melee reach in feet for this enemy.
+
+    Flat-stat enemies (character=None): always 5ft.
+    NPC enemies: 10ft if any equipped weapon has the reach trait.
+    (AoN: https://2e.aonprd.com/Traits.aspx?ID=684 — Reach)
+    """
+    if enemy.character is None:
+        return 5
+    for eq in enemy.character.equipped_weapons:
+        if "reach" in eq.weapon.traits:
+            return 10
+    return 5
+
+
+def _enemy_preferred_range(enemy: EnemySnapshot) -> int:
+    """Return preferred engagement range for this enemy in feet.
+
+    Melee enemies: melee reach (5 or 10).
+    Caster enemies: max spell range across known spells in SPELL_REGISTRY.
+    """
+    if enemy.character is None or not enemy.character.known_spells:
+        return _enemy_melee_reach(enemy)
+    from pf2e.spells import SPELL_REGISTRY
+    max_range = 0
+    for slug in enemy.character.known_spells:
+        defn = SPELL_REGISTRY.get(slug)
+        if defn and defn.range_ft > 5:
+            max_range = max(max_range, defn.range_ft)
+    if max_range > 0:
+        return max_range
+    return _enemy_melee_reach(enemy)
+
+
+def _best_adjacent_dest(
+    target_pos: Pos,
+    start: Pos,
+    speed: int,
+    occupied: set[Pos],
+    grid: GridState,
+) -> Pos | None:
+    """Find the cheapest reachable square adjacent to target_pos."""
+    best: Pos | None = None
+    best_cost = 999
+    for dr in (-1, 0, 1):
+        for dc in (-1, 0, 1):
+            if dr == 0 and dc == 0:
+                continue
+            dest = (target_pos[0] + dr, target_pos[1] + dc)
+            if not (0 <= dest[0] < grid.rows and 0 <= dest[1] < grid.cols):
+                continue
+            if dest in occupied or dest in grid.walls:
+                continue
+            cost = shortest_movement_cost(start, dest, occupied | grid.walls, grid)
+            if cost < best_cost and cost <= speed:
+                best_cost = cost
+                best = dest
+    return best
+
+
 def _enemy_candidates(state: RoundState, actor_name: str) -> list[Action]:
     """Generate candidates for enemy combatants during adversarial sub-search.
 
-    Enemies use a simplified action set: STRIKE any PC in melee reach,
-    STRIDE toward nearest PC if none in reach, END_TURN.
+    CP11.2.2: priority-based targeting, reach-aware strikes, flanking
+    setup, caster standoff positioning.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2432)
     """
     enemy = state.enemies[actor_name]
     actions: list[Action] = []
 
-    if enemy.current_hp <= 0 or not enemy.damage_dice:
+    # F1 fix: caster enemies have no damage_dice but are not defenseless
+    is_caster = (
+        enemy.character is not None
+        and bool(enemy.character.known_spells)
+    )
+    if enemy.current_hp <= 0 or (not enemy.damage_dice and not is_caster):
         return [_end_turn(actor_name)]
 
-    # STRIKE: each living PC within 5-ft melee reach
-    has_target_in_reach = False
-    for pc_name, pc in state.pcs.items():
-        if pc.current_hp <= 0:
-            continue
-        if distance_ft(enemy.position, pc.position) <= 5:
+    reach = _enemy_melee_reach(enemy)
+    enemy_speed = enemy.speed
+    grid: GridState = state.grid  # type: ignore[assignment]
+    occupied = _occupied_positions(state) - {enemy.position}
+    living_pcs = [
+        (name, pc) for name, pc in state.pcs.items() if pc.current_hp > 0
+    ]
+
+    # -------------------------------------------------------------------
+    # STRIKE: all living PCs within melee reach
+    # -------------------------------------------------------------------
+    has_melee_target = False
+    for pc_name, pc in living_pcs:
+        if is_within_reach(enemy.position, pc.position, reach):
             actions.append(Action(
                 type=ActionType.STRIKE, actor_name=actor_name,
                 action_cost=1, target_name=pc_name,
             ))
-            has_target_in_reach = True
+            has_melee_target = True
 
-    # STRIDE toward nearest PC if no one is in melee reach
-    if not has_target_in_reach:
-        grid: GridState = state.grid  # type: ignore[assignment]
-        occupied = _occupied_positions(state) - {enemy.position}
-        # Find nearest living PC and stride toward them
-        nearest_pc_name: str | None = None
-        nearest_dist = 999
-        for pc_name, pc in state.pcs.items():
-            if pc.current_hp <= 0:
+    # -------------------------------------------------------------------
+    # STRIDE destinations (only when no melee target)
+    # -------------------------------------------------------------------
+    if not has_melee_target and living_pcs:
+        preferred_range = _enemy_preferred_range(enemy)
+        is_ranged = preferred_range > reach
+
+        stride_destinations: set[Pos] = set()
+
+        # --- Category 1: Best target approach / caster standoff ---
+        best_pc_name, best_pc = max(
+            living_pcs,
+            key=lambda x: _enemy_target_priority(enemy, x[1], state),
+        )
+
+        if not is_ranged:
+            # Melee: approach best-priority target
+            dest = _best_adjacent_dest(
+                best_pc.position, enemy.position, enemy_speed, occupied, grid,
+            )
+            if dest is not None:
+                stride_destinations.add(dest)
+        else:
+            # Caster: find standoff within spell range but outside melee
+            for min_safe_dist in (15, 10, 5):
+                best_standoff: Pos | None = None
+                best_standoff_score = -999.0
+                for dr in range(-8, 9):
+                    for dc in range(-8, 9):
+                        dest = (enemy.position[0] + dr, enemy.position[1] + dc)
+                        if not (0 <= dest[0] < grid.rows
+                                and 0 <= dest[1] < grid.cols):
+                            continue
+                        if dest in occupied or dest in grid.walls:
+                            continue
+                        if not can_reach(
+                            enemy.position, dest, enemy_speed,
+                            occupied | grid.walls, grid,
+                        ):
+                            continue
+                        # At least one PC in spell range
+                        if not any(
+                            distance_ft(dest, pc.position) <= preferred_range
+                            for _, pc in living_pcs
+                        ):
+                            continue
+                        # Outside safe distance from all PCs
+                        min_pc_dist = min(
+                            distance_ft(dest, pc.position)
+                            for _, pc in living_pcs
+                        )
+                        if min_pc_dist < min_safe_dist:
+                            continue
+                        if min_pc_dist > best_standoff_score:
+                            best_standoff_score = min_pc_dist
+                            best_standoff = dest
+                if best_standoff is not None:
+                    stride_destinations.add(best_standoff)
+                    break
+
+            # Fallback: approach best target if no standoff found
+            if not stride_destinations:
+                dest = _best_adjacent_dest(
+                    best_pc.position, enemy.position, enemy_speed,
+                    occupied, grid,
+                )
+                if dest is not None:
+                    stride_destinations.add(dest)
+
+        # --- Category 2: Flanking setup ---
+        flanking_added = 0
+        for en_name, en_snap in state.enemies.items():
+            if en_name == actor_name or en_snap.current_hp <= 0:
                 continue
-            d = distance_ft(enemy.position, pc.position)
-            if d < nearest_dist:
-                nearest_dist = d
-                nearest_pc_name = pc_name
+            if flanking_added >= 2:
+                break
+            for pc_name, pc in living_pcs:
+                if distance_ft(en_snap.position, pc.position) > 5:
+                    continue
+                # Reflect ally through PC to find flanking position
+                ar, ac_col = en_snap.position
+                pr, pc_col = pc.position
+                dest = (2 * pr - ar, 2 * pc_col - ac_col)
+                if not (0 <= dest[0] < grid.rows
+                        and 0 <= dest[1] < grid.cols):
+                    continue
+                if dest in occupied or dest in grid.walls:
+                    continue
+                if not can_reach(
+                    enemy.position, dest, enemy_speed,
+                    occupied | grid.walls, grid,
+                ):
+                    continue
+                if are_flanking(dest, pc.position, en_snap.position):
+                    stride_destinations.add(dest)
+                    flanking_added += 1
+                    break
 
-        if nearest_pc_name is not None:
-            target_pos = state.pcs[nearest_pc_name].position
-            # Find best square adjacent to the target PC within enemy speed
-            enemy_speed = getattr(enemy, 'speed', 25)
-            best_dest: Pos | None = None
-            best_cost = 999
-            for dr in (-1, 0, 1):
-                for dc in (-1, 0, 1):
-                    if dr == 0 and dc == 0:
-                        continue
-                    dest = (target_pos[0] + dr, target_pos[1] + dc)
-                    if not (0 <= dest[0] < grid.rows and 0 <= dest[1] < grid.cols):
-                        continue
-                    if dest in occupied or dest in grid.walls:
-                        continue
-                    cost = shortest_movement_cost(
-                        enemy.position, dest, occupied | grid.walls, grid,
-                    )
-                    if cost < best_cost and cost <= enemy_speed:
-                        best_cost = cost
-                        best_dest = dest
+        # Emit stride candidates
+        for dest in stride_destinations:
+            actions.append(Action(
+                type=ActionType.STRIDE, actor_name=actor_name,
+                action_cost=1, target_position=dest,
+            ))
 
-            if best_dest is not None:
-                actions.append(Action(
-                    type=ActionType.STRIDE, actor_name=actor_name,
-                    action_cost=1, target_position=best_dest,
-                ))
-
-    # STAND for prone enemies
+    # -------------------------------------------------------------------
+    # STAND: if prone
+    # -------------------------------------------------------------------
     if enemy.prone:
         actions.append(Action(
             type=ActionType.STAND, actor_name=actor_name, action_cost=1,
