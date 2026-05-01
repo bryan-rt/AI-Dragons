@@ -1620,7 +1620,7 @@ def evaluate_taunt(
     remaining_attacks = target.num_attacks_per_turn
 
     # -1 circumstance ≈ 5% fewer hits × AED primitive
-    avg_attack_ev = _avg_enemy_attack_ev(state)
+    avg_attack_ev = _avg_opposing_attack_ev(state, action.actor_name)
     penalty_ev = p_targets_ally * remaining_attacks * avg_attack_ev * 0.05
 
     # Off-guard ≈ +10% hit chance for allies × actual ally damage
@@ -1826,56 +1826,96 @@ def _parse_damage_dice(dice_str: str) -> tuple[int, str]:
         return (0, "d4")
 
 
-def _avg_enemy_attack_ev(state: RoundState) -> float:
-    """Expected damage value of one average enemy attack in current state.
+def _is_pc_actor(state: RoundState, actor_name: str) -> bool:
+    """True if actor is on the PC faction."""
+    return actor_name in state.pcs
 
-    The AED primitive: value of forcing one enemy action loss ≈ this.
-    Averaged across living enemies weighted by num_attacks_per_turn.
+
+def _avg_opposing_attack_ev(state: RoundState, actor_name: str) -> float:
+    """EV of one average attack from the opposing faction.
+
+    PC actor → enemies oppose. NPC actor → PCs oppose.
     Falls back to 3.5 if no data available.
     (AoN: https://2e.aonprd.com/Rules.aspx?ID=2187 — Attack Rolls)
     """
-    living_enemies = [e for e in state.enemies.values() if e.current_hp > 0]
-    if not living_enemies:
-        return 3.5
-
-    living_pcs = [p for p in state.pcs.values() if p.current_hp > 0]
-    if not living_pcs:
-        avg_party_ac = 16.0
+    if _is_pc_actor(state, actor_name):
+        # PC actor: opposing faction is enemies
+        living = [e for e in state.enemies.values() if e.current_hp > 0]
+        if not living:
+            return 3.5
+        living_pcs = [p for p in state.pcs.values() if p.current_hp > 0]
+        avg_target_ac = (
+            sum(armor_class(p) for p in living_pcs) / len(living_pcs)  # type: ignore[arg-type]
+            if living_pcs else 16.0
+        )
+        total_ev = 0.0
+        total_weight = 0.0
+        for enemy in living:
+            count, die_str = _parse_damage_dice(enemy.damage_dice)
+            if count == 0:
+                continue
+            avg_dmg = count * die_average(die_str) + enemy.damage_bonus
+            out = enumerate_d20_outcomes(enemy.attack_bonus, int(avg_target_ac))
+            hit_prob = (out.success + out.critical_success) / 20
+            total_ev += hit_prob * avg_dmg * float(enemy.num_attacks_per_turn)
+            total_weight += float(enemy.num_attacks_per_turn)
+        return total_ev / total_weight if total_weight > 0 else 3.5
     else:
-        avg_party_ac = sum(
-            armor_class(p)  # type: ignore[arg-type]
-            for p in living_pcs
-        ) / len(living_pcs)
+        # NPC actor: opposing faction is PCs
+        living = [p for p in state.pcs.values() if p.current_hp > 0]
+        if not living:
+            return 3.5
+        # PCs attack enemies, so target AC = average enemy AC
+        living_enemies = [e for n, e in state.enemies.items()
+                          if e.current_hp > 0 and n != actor_name]
+        avg_target_ac = (
+            sum(e.ac for e in living_enemies) / len(living_enemies)
+            if living_enemies else 16.0
+        )
+        total_ev = 0.0
+        total_weight = 0.0
+        for pc in living:
+            if not pc.character.equipped_weapons:
+                continue
+            eq = pc.character.equipped_weapons[0]
+            pen = map_penalty(pc.map_count + 1, eq.weapon.is_agile)
+            bonus = attack_bonus(pc, eq, pen)  # type: ignore[arg-type]
+            out = enumerate_d20_outcomes(bonus, int(avg_target_ac))
+            hit_prob = (out.success + out.critical_success) / 20
+            dmg = damage_avg(pc, eq)  # type: ignore[arg-type]
+            total_ev += hit_prob * dmg
+            total_weight += 1.0
+        return total_ev / total_weight if total_weight > 0 else 3.5
 
-    total_ev = 0.0
-    total_weight = 0.0
-    for enemy in living_enemies:
-        count, die_str = _parse_damage_dice(enemy.damage_dice)
-        if count == 0:
-            continue
-        avg_dmg = count * die_average(die_str) + enemy.damage_bonus
-        outcomes_d20 = enumerate_d20_outcomes(enemy.attack_bonus, int(avg_party_ac))
-        hit_prob = (outcomes_d20.success + outcomes_d20.critical_success) / 20
-        ev = hit_prob * avg_dmg
-        weight = float(enemy.num_attacks_per_turn)
-        total_ev += ev * weight
-        total_weight += weight
 
-    return total_ev / total_weight if total_weight > 0 else 3.5
+def _avg_enemy_attack_ev(state: RoundState, actor_name: str = "") -> float:
+    """Backward compat alias — routes to _avg_opposing_attack_ev."""
+    return _avg_opposing_attack_ev(state, actor_name)
 
 
 def _avg_ally_damage(state: RoundState, actor_name: str) -> float:
-    """Average damage per hit for allies (excluding actor).
+    """Avg damage per hit from allied faction (excluding actor).
 
-    Used to estimate off-guard value: +2 attack ≈ 10% more hits × this.
+    PC actor → allied PCs. NPC actor → allied enemies.
     """
-    totals: list[float] = []
-    for name, pc in state.pcs.items():
-        if name == actor_name or pc.current_hp <= 0:
-            continue
-        if pc.character.equipped_weapons:
-            totals.append(damage_avg(pc, pc.character.equipped_weapons[0]))  # type: ignore[arg-type]
-    return sum(totals) / len(totals) if totals else 5.0
+    if _is_pc_actor(state, actor_name):
+        totals: list[float] = []
+        for name, pc in state.pcs.items():
+            if name == actor_name or pc.current_hp <= 0:
+                continue
+            if pc.character.equipped_weapons:
+                totals.append(damage_avg(pc, pc.character.equipped_weapons[0]))  # type: ignore[arg-type]
+        return sum(totals) / len(totals) if totals else 5.0
+    else:
+        # NPC actor — allies are other enemies
+        totals_npc: list[float] = []
+        for name, enemy in state.enemies.items():
+            if name == actor_name or enemy.current_hp <= 0:
+                continue
+            count, die_str = _parse_damage_dice(enemy.damage_dice)
+            if count > 0:
+                totals_npc.append(count * die_average(die_str) + enemy.damage_bonus)
+        return sum(totals_npc) / len(totals_npc) if totals_npc else 5.0
 
 
 def _has_cover_or_concealment(

@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: May 2026, post-CP11.7 (AED Scoring).
+Last updated: May 2026, post-CP11.7.1 (Faction-Agnostic AED).
 
 ## Test Count
 
-**1151 tests passing.**
+**1155 tests passing.**
 
 ## Active Checkpoint
 
@@ -28,7 +28,15 @@ CP10.9 (Death/Dying System) is **COMPLETE**.
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 48 times (most recently at CP11.7 — AED scoring).
+Verified 49 times (most recently at CP11.7.1 — faction-agnostic AED).
+
+## CP11.7.1 Status — COMPLETE
+
+Fixed faction routing in AED helpers. `_avg_enemy_attack_ev` → `_avg_opposing_attack_ev(state, actor_name)`
+with two-branch routing (PC vs NPC actor). `_avg_ally_damage` NPC branch reads `state.enemies`.
+`_condition_ev` threads `actor_name` for correct faction. `disarmed` uses `getattr` for type safety.
+
+1151 → 1155 tests. EV 7.65 verified (49th).
 
 ## CP11.7 Status — COMPLETE
 

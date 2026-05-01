@@ -191,11 +191,13 @@ def _condition_ev(
     condition: str,
     target: EnemySnapshot,
     state: RoundState | None = None,
+    actor_name: str = "",
 ) -> float:
-    """Estimate EV of applying a named condition to an enemy target.
+    """Estimate EV of applying a named condition to a target.
 
     Handles frightened_N, prone (Stand cost AED), off_guard (+2 ally hits),
-    and disarmed (-2 enemy attack penalty).
+    and disarmed (-2 attack penalty). actor_name determines faction routing
+    for AED helpers.
     (AoN: https://2e.aonprd.com/Conditions.aspx?ID=88 — Prone)
     (AoN: https://2e.aonprd.com/Conditions.aspx?ID=58 — Off-Guard)
     """
@@ -219,13 +221,13 @@ def _condition_ev(
         return gain * per_level_ev
 
     if condition == "prone":
-        # Enemy must spend 1 action to Stand next turn instead of attacking.
-        # Discounted by 0.7 for P(enemy survives to act on next turn).
+        # Target must spend 1 action to Stand next turn instead of attacking.
+        # Discounted by 0.7 for P(target survives to act on next turn).
         # (AoN: https://2e.aonprd.com/Actions.aspx?ID=2323 — Stand)
         if state is None:
             return 1.5  # fallback: roughly one weak attack EV
-        from pf2e.actions import _avg_enemy_attack_ev
-        return _avg_enemy_attack_ev(state) * 0.70
+        from pf2e.actions import _avg_opposing_attack_ev
+        return _avg_opposing_attack_ev(state, actor_name) * 0.70
 
     if condition == "off_guard":
         # +2 circumstance to attacker rolls ≈ 10% more hits × avg ally damage.
@@ -234,21 +236,25 @@ def _condition_ev(
         if state is None:
             return 0.5  # fallback
         from pf2e.actions import _avg_ally_damage
-        return 0.10 * _avg_ally_damage(state, "")
+        return 0.10 * _avg_ally_damage(state, actor_name)
 
     if condition == "disarmed":
         # -2 attack penalty ≈ 10% fewer hits × avg damage × attacks.
         # (AoN: https://2e.aonprd.com/Actions.aspx?ID=2300)
-        if not target.damage_dice or "d" not in target.damage_dice:
+        # Guard: target may be CombatantSnapshot (no damage_dice) if NPC evaluates
+        dice_str = getattr(target, 'damage_dice', '') or ''
+        if not dice_str or "d" not in dice_str:
             return 0.0
-        parts = target.damage_dice.split("d", 1)
+        parts = dice_str.split("d", 1)
         try:
             count = int(parts[0])
-            die_str = f"d{parts[1]}"
+            die_s = f"d{parts[1]}"
         except (ValueError, IndexError):
             return 0.0
-        avg_dmg = count * die_average(die_str) + target.damage_bonus
-        return 0.10 * avg_dmg * target.num_attacks_per_turn
+        damage_bonus = getattr(target, 'damage_bonus', 0)
+        num_attacks = getattr(target, 'num_attacks_per_turn', 1)
+        avg_dmg = count * die_average(die_s) + damage_bonus
+        return 0.10 * avg_dmg * num_attacks
 
     return 0.0
 
@@ -401,7 +407,7 @@ def evaluate_contest_roll(
         # Compute score_delta
         score = effect.score_delta
         for cond in effect.conditions_on_target:
-            score += _condition_ev(cond, target, state)
+            score += _condition_ev(cond, target, state, action.actor_name)
         # Actor frightened penalty (Demoralize crit_failure deviation)
         for cond in effect.conditions_on_actor:
             if cond.startswith("frightened_"):

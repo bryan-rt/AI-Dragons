@@ -494,33 +494,44 @@ class TestConditionEvWithState:
         """prone returns non-zero AED when state is provided."""
         state = _quick_state()
         target = state.enemies["Bandit1"]
-        ev = _condition_ev("prone", target, state)
+        ev = _condition_ev("prone", target, state, "Rook")
         assert ev > 0.0
 
-    def test_prone_uses_avg_enemy_attack_ev(self):
-        """prone value = avg_enemy_attack_ev × 0.70 survival discount."""
+    def test_prone_uses_avg_opposing_attack_ev(self):
+        """prone value = avg_opposing_attack_ev × 0.70 survival discount."""
         state = _quick_state()
         target = state.enemies["Bandit1"]
-        ev = _condition_ev("prone", target, state)
-        from pf2e.actions import _avg_enemy_attack_ev
-        expected = _avg_enemy_attack_ev(state) * 0.70
+        ev = _condition_ev("prone", target, state, "Rook")
+        from pf2e.actions import _avg_opposing_attack_ev
+        expected = _avg_opposing_attack_ev(state, "Rook") * 0.70
         assert ev == pytest.approx(expected, abs=0.01)
 
     def test_off_guard_nonzero_with_state(self):
         """off_guard returns non-zero when state is provided."""
         state = _quick_state()
         target = state.enemies["Bandit1"]
-        ev = _condition_ev("off_guard", target, state)
+        ev = _condition_ev("off_guard", target, state, "Rook")
         assert ev > 0.0
 
     def test_off_guard_uses_avg_ally_damage(self):
         """off_guard value = 0.10 × avg_ally_damage."""
         state = _quick_state()
         target = state.enemies["Bandit1"]
-        ev = _condition_ev("off_guard", target, state)
+        ev = _condition_ev("off_guard", target, state, "Rook")
         from pf2e.actions import _avg_ally_damage
-        expected = 0.10 * _avg_ally_damage(state, "")
+        expected = 0.10 * _avg_ally_damage(state, "Rook")
         assert ev == pytest.approx(expected, abs=0.01)
+
+    def test_prone_faction_routing(self):
+        """prone EV differs by actor faction when stats differ."""
+        state = _quick_state()
+        target = state.enemies["Bandit1"]
+        ev_pc = _condition_ev("prone", target, state, "Rook")
+        ev_npc = _condition_ev("prone", target, state, "Bandit1")
+        # PC actor → enemy attack EV; NPC actor → PC attack EV
+        assert ev_pc > 0.0
+        assert ev_npc > 0.0
+        assert ev_pc != pytest.approx(ev_npc, abs=0.01)
 
     def test_frightened_unchanged_with_state(self):
         """frightened formula is unchanged when state is passed."""
@@ -528,7 +539,7 @@ class TestConditionEvWithState:
         ev_without = _condition_ev("frightened_1", snap)
         state = _quick_state()
         target = state.enemies["Bandit1"]
-        ev_with = _condition_ev("frightened_1", target, state)
+        ev_with = _condition_ev("frightened_1", target, state, "Rook")
         # Both should be non-zero; values may differ due to different enemy stats
         assert ev_without > 0.0
         assert ev_with > 0.0

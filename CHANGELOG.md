@@ -1,5 +1,16 @@
 # Changelog
 
+## [CP11.7.1] — 2026-05-01
+### Fixed
+- **AED helpers hardcoded PC-as-actor** — `_avg_enemy_attack_ev` and `_avg_ally_damage` assumed the actor was always a PC. NPC evaluating Trip or Fear used wrong faction for opposing/allied pools.
+
+### Changed
+- **`_avg_enemy_attack_ev` → `_avg_opposing_attack_ev(state, actor_name)`** — two-branch routing: PC actor → opponents=enemies, allies=PCs; NPC actor → opponents=PCs, allies=enemies.
+- **`_avg_ally_damage`** — NPC branch reads `state.enemies` for allied faction.
+- **`_condition_ev` + `actor_name: str = ""`** — prone/off_guard pass actor_name to AED helpers for correct faction routing.
+- **`disarmed` case** — uses `getattr` for `damage_dice`/`damage_bonus`/`num_attacks_per_turn` to handle CombatantSnapshot targets.
+- 4 new tests (1151 → 1155), EV 7.65 (49th)
+
 ## [CP11.7] — 2026-05-01
 ### Fixed
 - **Trip and Disarm scored 0.0 EV** — `_condition_ev("prone")` and `_condition_ev("off_guard")` both returned 0.0 in contest_roll.py. These actions were invisible to the beam search. Trip now scores Stand cost AED (avg_enemy_attack_ev × 0.70 survival discount). Disarm now scores -2 attack penalty EV.

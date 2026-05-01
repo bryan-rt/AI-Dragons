@@ -1338,24 +1338,45 @@ class TestEnemyCandidates:
 
 class TestAEDHelpers:
 
-    def test_avg_enemy_attack_ev_positive(self):
-        """Returns positive value for standard enemy stats."""
-        from pf2e.actions import _avg_enemy_attack_ev
+    def test_avg_opposing_attack_ev_pc_positive(self):
+        """PC actor: returns positive value reflecting enemy stats."""
+        from pf2e.actions import _avg_opposing_attack_ev
         state = _quick_state()
-        ev = _avg_enemy_attack_ev(state)
+        ev = _avg_opposing_attack_ev(state, "Rook")
         assert ev > 0.0
 
-    def test_avg_enemy_attack_ev_fallback_no_enemies(self):
-        """Returns 3.5 when no living enemies."""
-        from pf2e.actions import _avg_enemy_attack_ev
+    def test_avg_opposing_attack_ev_pc_fallback_no_enemies(self):
+        """PC actor: returns 3.5 when no living enemies."""
+        from pf2e.actions import _avg_opposing_attack_ev
         state = _quick_state(enemy_overrides={"Bandit1": {"current_hp": 0}})
-        assert _avg_enemy_attack_ev(state) == 3.5
+        assert _avg_opposing_attack_ev(state, "Rook") == 3.5
 
-    def test_avg_enemy_attack_ev_fallback_bad_dice(self):
-        """Returns 3.5 when enemy has empty damage_dice."""
-        from pf2e.actions import _avg_enemy_attack_ev
+    def test_avg_opposing_attack_ev_pc_fallback_bad_dice(self):
+        """PC actor: returns 3.5 when enemy has empty damage_dice."""
+        from pf2e.actions import _avg_opposing_attack_ev
         state = _quick_state(enemy_overrides={"Bandit1": {"damage_dice": ""}})
-        assert _avg_enemy_attack_ev(state) == 3.5
+        assert _avg_opposing_attack_ev(state, "Rook") == 3.5
+
+    def test_avg_opposing_attack_ev_npc_reads_pcs(self):
+        """NPC actor: opposing faction is PCs."""
+        from pf2e.actions import _avg_opposing_attack_ev
+        state = _quick_state()
+        ev_npc = _avg_opposing_attack_ev(state, "Bandit1")
+        ev_pc = _avg_opposing_attack_ev(state, "Rook")
+        assert ev_npc > 0.0
+        # Different factions → different EVs
+        assert ev_npc != pytest.approx(ev_pc, abs=0.01)
+
+    def test_avg_opposing_attack_ev_npc_fallback_no_pcs(self):
+        """NPC actor: returns 3.5 when no living PCs."""
+        from pf2e.actions import _avg_opposing_attack_ev
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"current_hp": 0},
+            "Rook": {"current_hp": 0},
+            "Dalai Alpaca": {"current_hp": 0},
+            "Erisen": {"current_hp": 0},
+        })
+        assert _avg_opposing_attack_ev(state, "Bandit1") == 3.5
 
     def test_avg_ally_damage_positive(self):
         """Returns positive value when allies have weapons."""
@@ -1382,6 +1403,14 @@ class TestAEDHelpers:
             "Erisen": {"current_hp": 0},
         })
         assert _avg_ally_damage(state, "Rook") == 5.0
+
+    def test_avg_ally_damage_npc_reads_enemies(self):
+        """NPC actor: allies are other enemies."""
+        from pf2e.actions import _avg_ally_damage
+        state = _quick_state()
+        dmg = _avg_ally_damage(state, "Bandit1")
+        # Bandit1 is only enemy, so no allies → fallback 5.0
+        assert dmg == 5.0
 
     def test_parse_damage_dice_valid(self):
         """Parses standard NdM format."""
