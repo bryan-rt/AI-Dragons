@@ -13,8 +13,8 @@ from pf2e.actions import Action, ActionType
 from pf2e.combat_math import melee_reach_ft, max_hp
 from pf2e.tactics import FOLIO_TACTICS, PREPARED_TACTICS
 from sim.grid import (
-    GridState, Pos, are_flanking, can_reach, distance_ft, is_within_reach,
-    shortest_movement_cost,
+    GridState, Pos, are_flanking, can_reach, compute_cover_level,
+    CoverLevel, distance_ft, is_within_reach, shortest_movement_cost,
 )
 from sim.round_state import CombatantSnapshot, EnemySnapshot, RoundState
 
@@ -41,6 +41,247 @@ def generate_candidates(
 
 def _end_turn(actor_name: str) -> Action:
     return Action(type=ActionType.END_TURN, actor_name=actor_name, action_cost=0)
+
+
+# ---------------------------------------------------------------------------
+# Faction-agnostic helpers (CP11.2.3)
+# ---------------------------------------------------------------------------
+
+def _opponents(state: RoundState, actor_name: str) -> dict[str, object]:
+    """Living opposing combatants relative to actor's faction."""
+    if actor_name in state.pcs:
+        return {n: e for n, e in state.enemies.items() if e.current_hp > 0}
+    return {n: p for n, p in state.pcs.items() if p.current_hp > 0}
+
+
+def _allies(state: RoundState, actor_name: str) -> dict[str, object]:
+    """Living allied combatants relative to actor's faction, excl. actor."""
+    if actor_name in state.pcs:
+        return {n: p for n, p in state.pcs.items()
+                if n != actor_name and p.current_hp > 0}
+    return {n: e for n, e in state.enemies.items()
+            if n != actor_name and e.current_hp > 0}
+
+
+def _combatant_speed(snap: object) -> int:
+    """Speed in feet for any combatant snapshot type."""
+    cs = getattr(snap, 'current_speed', None)
+    if cs is not None:
+        return cs
+    spd = getattr(snap, 'speed', None)
+    if spd is not None:
+        return spd
+    char = getattr(snap, 'character', None)
+    if char is not None:
+        return getattr(char, 'speed', 25)
+    return 25
+
+
+def _snap_max_hp(snap: object) -> int:
+    """Max HP for any combatant snapshot type."""
+    mhp = getattr(snap, 'max_hp', None)
+    if mhp is not None and not callable(mhp):
+        return int(mhp)
+    char = getattr(snap, 'character', None)
+    if char is not None:
+        return max_hp(char)  # type: ignore[arg-type]
+    return 0
+
+
+def _opponent_threat_score(snap: object) -> float:
+    """Approximate offensive threat of a combatant snapshot.
+
+    EnemySnapshot: attack_bonus × num_attacks_per_turn.
+    CombatantSnapshot: attack_bonus from first weapon × 2.
+    """
+    if hasattr(snap, 'attack_bonus') and hasattr(snap, 'num_attacks_per_turn'):
+        return float(snap.attack_bonus * snap.num_attacks_per_turn)
+    char = getattr(snap, 'character', None)
+    if char and getattr(char, 'equipped_weapons', None):
+        eq = char.equipped_weapons[0]
+        from pf2e.combat_math import attack_bonus as _atk
+        try:
+            bonus = _atk(snap, eq, 0)  # type: ignore[arg-type]
+            return float(bonus * 2)
+        except Exception:
+            pass
+    return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Shared tactical stride categories A–E (CP11.2.3)
+# ---------------------------------------------------------------------------
+
+def _add_tactical_stride_categories(
+    actor_pos: Pos,
+    actor_name: str,
+    actor_char: object,
+    state: RoundState,
+    grid: GridState,
+    occupied: set[Pos],
+    candidates: set[Pos],
+) -> None:
+    """Add faction-agnostic tactical stride categories A–E.
+
+    Called by both _add_stride_candidates (PC) and _enemy_candidates
+    (NPC). All faction reads go through _opponents/_allies helpers.
+    """
+    opp = list(_opponents(state, actor_name).values())
+    alli = list(_allies(state, actor_name).values())
+    scan_range = 6
+
+    # -------------------------------------------------------------------
+    # Category A: Cover — square granting cover from most threatening opp
+    # (AoN: https://2e.aonprd.com/Rules.aspx?ID=2361 — Cover)
+    # -------------------------------------------------------------------
+    if opp:
+        most_threatening = max(opp, key=_opponent_threat_score)
+        cover_added = 0
+        for dr in range(-scan_range, scan_range + 1):
+            if cover_added >= 4:
+                break
+            for dc in range(-scan_range, scan_range + 1):
+                if cover_added >= 4:
+                    break
+                dest = (actor_pos[0] + dr, actor_pos[1] + dc)
+                if not (0 <= dest[0] < grid.rows
+                        and 0 <= dest[1] < grid.cols):
+                    continue
+                if dest in occupied or dest in grid.walls:
+                    continue
+                # attacker=opponent, defender=actor at dest
+                if compute_cover_level(
+                    most_threatening.position, dest, grid,
+                ) > CoverLevel.NONE:
+                    candidates.add(dest)
+                    cover_added += 1
+
+    # -------------------------------------------------------------------
+    # Category B: Chokepoint — squares with ≤3 non-wall adjacent squares
+    # Distance proxy for opponent reachability (BFS deferred CP11.2.4).
+    # -------------------------------------------------------------------
+    chokepoint_added = 0
+    for dr in range(-scan_range, scan_range + 1):
+        if chokepoint_added >= 3:
+            break
+        for dc in range(-scan_range, scan_range + 1):
+            if chokepoint_added >= 3:
+                break
+            dest = (actor_pos[0] + dr, actor_pos[1] + dc)
+            if not (0 <= dest[0] < grid.rows
+                    and 0 <= dest[1] < grid.cols):
+                continue
+            if dest in occupied or dest in grid.walls:
+                continue
+            approach_count = sum(
+                1
+                for adr in (-1, 0, 1)
+                for adc in (-1, 0, 1)
+                if (adr != 0 or adc != 0)
+                and 0 <= dest[0] + adr < grid.rows
+                and 0 <= dest[1] + adc < grid.cols
+                and (dest[0] + adr, dest[1] + adc) not in grid.walls
+            )
+            if approach_count > 3:
+                continue
+            # At least one opponent within 2× their speed (distance proxy)
+            any_opp_nearby = any(
+                distance_ft(snap.position, dest)
+                    <= _combatant_speed(snap) * 2
+                for snap in opp[:3]
+            )
+            if any_opp_nearby:
+                candidates.add(dest)
+                chokepoint_added += 1
+
+    # -------------------------------------------------------------------
+    # Category C: Threat escape — fewer opponents can reach actor here
+    # Distance proxy (BFS deferred CP11.2.4).
+    # -------------------------------------------------------------------
+    current_threat = sum(
+        1 for snap in opp
+        if distance_ft(snap.position, actor_pos) <= _combatant_speed(snap)
+    )
+    escape_added = 0
+    if current_threat > 0:
+        for dr in range(-scan_range, scan_range + 1):
+            if escape_added >= 3:
+                break
+            for dc in range(-scan_range, scan_range + 1):
+                if escape_added >= 3:
+                    break
+                dest = (actor_pos[0] + dr, actor_pos[1] + dc)
+                if not (0 <= dest[0] < grid.rows
+                        and 0 <= dest[1] < grid.cols):
+                    continue
+                if dest in occupied or dest in grid.walls:
+                    continue
+                dest_threat = sum(
+                    1 for snap in opp
+                    if distance_ft(snap.position, dest)
+                        <= _combatant_speed(snap)
+                )
+                if dest_threat < current_threat:
+                    candidates.add(dest)
+                    escape_added += 1
+
+    # -------------------------------------------------------------------
+    # Category D: Defensive withdrawal — maximize distance from opponents
+    # HP gate removed: always generated, beam scores value.
+    # -------------------------------------------------------------------
+    if opp:
+        best_dist = -1
+        best_pos: Pos | None = None
+        for dr in range(-scan_range, scan_range + 1):
+            for dc in range(-scan_range, scan_range + 1):
+                dest = (actor_pos[0] + dr, actor_pos[1] + dc)
+                if not (0 <= dest[0] < grid.rows
+                        and 0 <= dest[1] < grid.cols):
+                    continue
+                if dest in occupied or dest in grid.walls:
+                    continue
+                min_opp_dist = min(
+                    distance_ft(dest, snap.position) for snap in opp
+                )
+                if min_opp_dist > best_dist:
+                    best_dist = min_opp_dist
+                    best_pos = dest
+        if best_pos is not None:
+            candidates.add(best_pos)
+
+    # -------------------------------------------------------------------
+    # Category E: Reactive Strike interdiction — interpose between
+    # opponent and ally. Dormant: gated on has_reactive_strike=False
+    # for all current characters.
+    # (AoN: https://2e.aonprd.com/Actions.aspx?ID=3041)
+    # -------------------------------------------------------------------
+    if actor_char and getattr(actor_char, 'has_reactive_strike', False):
+        actor_reach = melee_reach_ft(actor_char)
+        rs_added = 0
+        for ally_snap in alli:
+            if rs_added >= 3:
+                break
+            for opp_snap in opp:
+                if rs_added >= 3:
+                    break
+                er, ec = opp_snap.position
+                for dr in (-1, 0, 1):
+                    for dc in (-1, 0, 1):
+                        if dr == 0 and dc == 0:
+                            continue
+                        dest = (er + dr, ec + dc)
+                        if not (0 <= dest[0] < grid.rows
+                                and 0 <= dest[1] < grid.cols):
+                            continue
+                        if dest in occupied or dest in grid.walls:
+                            continue
+                        if not is_within_reach(
+                            dest, opp_snap.position, actor_reach,
+                        ):
+                            continue
+                        if distance_ft(dest, ally_snap.position) <= 5:
+                            candidates.add(dest)
+                            rs_added += 1
 
 
 # ---------------------------------------------------------------------------
@@ -445,28 +686,7 @@ def _add_stride_candidates(
         if len(candidates) >= 4:
             break
 
-    # Category 2: Defensive withdrawal — if HP < 50%, far from enemies
-    actor_max_hp = max_hp(actor.character)
-    if actor_max_hp > 0 and actor.current_hp / actor_max_hp < 0.5:
-        best_dist = -1
-        best_pos: Pos | None = None
-        for dr in range(-3, 4):
-            for dc in range(-3, 4):
-                dest = (actor.position[0] + dr, actor.position[1] + dc)
-                if not (0 <= dest[0] < grid.rows and 0 <= dest[1] < grid.cols):
-                    continue
-                if dest in occupied or dest in grid.walls:
-                    continue
-                min_enemy_dist = min(
-                    (distance_ft(dest, e.position)
-                     for e in state.enemies.values() if e.current_hp > 0),
-                    default=0,
-                )
-                if min_enemy_dist > best_dist:
-                    best_dist = min_enemy_dist
-                    best_pos = dest
-        if best_pos is not None:
-            candidates.add(best_pos)
+    # Category 2: (moved to _add_tactical_stride_categories as Category D)
 
     # Category 3: Adjacent to wounded ally
     for pc_name, pc in state.pcs.items():
@@ -576,6 +796,12 @@ def _add_stride_candidates(
         if mortar_best is not None:
             candidates.add(mortar_best)
 
+    # Categories A–E: faction-agnostic tactical categories (CP11.2.3)
+    _add_tactical_stride_categories(
+        actor.position, actor_name, actor.character,
+        state, grid, occupied, candidates,
+    )
+
     # Filter by BFS reachability within speed (can_reach targets dest directly)
     valid: list[Pos] = []
     for dest in candidates:
@@ -584,8 +810,8 @@ def _add_stride_candidates(
         if can_reach(actor.position, dest, speed, occupied | grid.walls, grid):
             valid.append(dest)
 
-    # Cap at ~30
-    for dest in valid[:30]:
+    # Cap at ~35
+    for dest in valid[:35]:
         actions.append(Action(
             type=ActionType.STRIDE, actor_name=actor_name,
             action_cost=1, target_position=dest,
@@ -878,6 +1104,13 @@ def _enemy_candidates(state: RoundState, actor_name: str) -> list[Action]:
                     stride_destinations.add(dest)
                     flanking_added += 1
                     break
+
+        # Categories A–E: faction-agnostic tactical categories (CP11.2.3)
+        _add_tactical_stride_categories(
+            enemy.position, actor_name,
+            getattr(enemy, 'character', None),
+            state, grid, occupied, stride_destinations,
+        )
 
         # Emit stride candidates
         for dest in stride_destinations:

@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: May 2026, post-CP11.2.2 (Enemy Movement Prediction).
+Last updated: May 2026, post-CP11.2.3 (Tactical Stride Categories).
 
 ## Test Count
 
-**1166 tests passing.**
+**1182 tests passing.**
 
 ## Active Checkpoint
 
@@ -28,7 +28,20 @@ CP10.9 (Death/Dying System) is **COMPLETE**.
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 50 times (most recently at CP11.2.2 — enemy movement prediction).
+Verified 51 times (most recently at CP11.2.3 — tactical stride categories).
+
+## CP11.2.3 Status — COMPLETE
+
+Shared `_add_tactical_stride_categories()` function with 5 new categories (A–E),
+called by both PC and NPC stride generation. Faction helpers `_opponents()`,
+`_allies()`, `_combatant_speed()`, `_snap_max_hp()`, `_opponent_threat_score()`.
+
+Categories: A=cover (cap 4), B=chokepoint ≤3 approach (cap 3), C=threat escape (cap 3),
+D=defensive withdrawal (HP gate removed), E=Reactive Strike (dormant).
+`has_reactive_strike: bool = False` added to Character + NPCData.
+
+Lookahead categories F/G/H deferred to CP11.2.4.
+1166 → 1182 tests. EV 7.65 verified (51st).
 
 ## CP11.2.2 Status — COMPLETE
 

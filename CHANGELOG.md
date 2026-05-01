@@ -1,5 +1,25 @@
 # Changelog
 
+## [CP11.2.3] — 2026-05-01
+### Added
+- **`_add_tactical_stride_categories()`** — shared by PC and NPC stride candidate generation. Contains 5 faction-agnostic categories.
+- **Faction helpers** — `_opponents()`, `_allies()`, `_combatant_speed()`, `_snap_max_hp()`, `_opponent_threat_score()`. All stride category logic routes through these.
+- **Category A: Cover positions** — destinations granting cover from most threatening opponent (cap 4). Uses `compute_cover_level`.
+- **Category B: Chokepoint occupation** — squares with ≤3 non-wall adjacent squares, opponent within 2× speed (cap 3).
+- **Category C: Threat escape** — fewer opponents within stride range of destination (cap 3). Distance proxy for performance.
+- **Category E: Reactive Strike interdiction** — interpose between opponent and ally. Dormant (gated on `has_reactive_strike=False`). Infrastructure for Fighter class.
+- **`has_reactive_strike: bool = False`** added to `Character` and `NPCData`.
+- PC stride destination cap raised 30 → 35.
+- 16 new tests (1166 → 1182), EV 7.65 (51st verification)
+
+### Fixed
+- **Defensive withdrawal HP gate removed** — previously gated on `current_hp < 50%`. Now always generated (Category D in shared function). Old HP-gated version deleted.
+
+### Design Notes
+- Lookahead categories F/G/H deferred to CP11.2.4 (requires `sim/prediction.py`).
+- Categories B/C use distance proxy (not BFS) for performance. BFS-accurate version deferred to CP11.2.4.
+- Existing PC categories 1–6 unchanged. Only new A–E categories are shared.
+
 ## [CP11.2.2] — 2026-05-01
 ### Fixed
 - **Caster enemies idled (F1)** — `_enemy_candidates` returned `[END_TURN]` for enemies with `damage_dice=""` but non-empty `known_spells`. War Chanter now generates stride candidates.

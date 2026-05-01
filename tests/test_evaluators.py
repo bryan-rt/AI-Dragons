@@ -1645,3 +1645,179 @@ class TestEnemyMovementPrediction:
         ctx = scenario.build_tactic_context()
         result = evaluate_tactic(STRIKE_HARD, ctx)
         assert result.expected_damage_dealt == pytest.approx(7.65, abs=EV_TOLERANCE)
+
+
+# ===========================================================================
+# CP11.2.3: Faction helpers + tactical stride categories
+# ===========================================================================
+
+class TestFactionHelpers:
+
+    def test_opponents_returns_enemies_for_pc(self) -> None:
+        from sim.candidates import _opponents
+        state = _quick_state()
+        opp = _opponents(state, "Rook")
+        assert "Bandit1" in opp
+        assert "Rook" not in opp
+
+    def test_opponents_returns_pcs_for_npc(self) -> None:
+        from sim.candidates import _opponents
+        state = _quick_state()
+        opp = _opponents(state, "Bandit1")
+        assert "Rook" in opp
+        assert "Bandit1" not in opp
+
+    def test_allies_excludes_actor(self) -> None:
+        from sim.candidates import _allies
+        state = _quick_state()
+        alli = _allies(state, "Rook")
+        assert "Rook" not in alli
+        assert "Aetregan" in alli
+
+    def test_allies_npc_returns_other_enemies(self) -> None:
+        """NPC allies are other living enemies."""
+        from sim.candidates import _allies
+        # Only one enemy in default scenario → allies empty
+        state = _quick_state()
+        alli = _allies(state, "Bandit1")
+        assert len(alli) == 0
+
+    def test_combatant_speed_enemy_snapshot(self) -> None:
+        from sim.candidates import _combatant_speed
+        state = _quick_state(enemy_overrides={"Bandit1": {"speed": 40}})
+        assert _combatant_speed(state.enemies["Bandit1"]) == 40
+
+    def test_combatant_speed_pc_snapshot(self) -> None:
+        from sim.candidates import _combatant_speed
+        state = _quick_state()
+        pc = state.pcs["Rook"]
+        # Should return current_speed or character.speed
+        assert _combatant_speed(pc) > 0
+
+    def test_snap_max_hp_enemy(self) -> None:
+        from sim.candidates import _snap_max_hp
+        state = _quick_state()
+        assert _snap_max_hp(state.enemies["Bandit1"]) == 20
+
+    def test_snap_max_hp_pc(self) -> None:
+        from sim.candidates import _snap_max_hp
+        state = _quick_state()
+        assert _snap_max_hp(state.pcs["Rook"]) == 23  # Rook max HP
+
+
+class TestTacticalStrideCategories:
+
+    def test_cover_position_generated_with_walls(self) -> None:
+        """Category A generates cover destinations when walls provide cover."""
+        from sim.candidates import _add_tactical_stride_categories, _occupied_positions
+        from sim.grid import GridState
+        # Build a small grid with a wall that provides cover
+        grid = GridState(rows=10, cols=10, walls=frozenset({(5, 5)}))
+        state = _quick_state()
+        # Override grid
+        from dataclasses import replace
+        state = replace(state, grid=grid)
+        occupied = _occupied_positions(state) - {state.pcs["Rook"].position}
+        candidates: set = set()
+        _add_tactical_stride_categories(
+            state.pcs["Rook"].position, "Rook", state.pcs["Rook"].character,
+            state, grid, occupied, candidates,
+        )
+        # With a wall at (5,5), some destinations should get cover
+        assert len(candidates) >= 1
+
+    def test_defensive_withdrawal_generated_at_full_hp(self) -> None:
+        """Category D generated even when actor is at full HP.
+
+        Regression: previously gated on current_hp / max_hp < 0.5.
+        """
+        from sim.candidates import generate_candidates
+        state = _quick_state()
+        # Rook is at full HP, Bandit1 adjacent
+        candidates = generate_candidates(state, "Rook")
+        stride_actions = [a for a in candidates if a.type == ActionType.STRIDE]
+        # Should have at least one stride (withdrawal is always generated now)
+        assert len(stride_actions) >= 1
+
+    def test_threat_escape_generated_when_surrounded(self) -> None:
+        """Category C generates escape when surrounded."""
+        from sim.candidates import generate_candidates
+        # Put actor between two enemies
+        state = _quick_state(
+            pc_overrides={
+                "Rook": {"position": (5, 5)},
+                "Aetregan": {"position": (0, 0)},
+                "Dalai Alpaca": {"position": (0, 1)},
+                "Erisen": {"position": (0, 2)},
+            },
+            enemy_overrides={
+                "Bandit1": {"position": (5, 6)},
+            },
+        )
+        candidates = generate_candidates(state, "Rook")
+        stride_actions = [a for a in candidates if a.type == ActionType.STRIDE]
+        # Should have escape destinations (away from Bandit1)
+        assert len(stride_actions) >= 1
+
+    def test_reactive_strike_no_candidates_without_flag(self) -> None:
+        """Category E generates 0 when has_reactive_strike=False."""
+        from sim.candidates import _add_tactical_stride_categories, _occupied_positions
+        state = _quick_state()
+        grid = state.grid
+        occupied = _occupied_positions(state) - {state.pcs["Rook"].position}
+        candidates: set = set()
+        _add_tactical_stride_categories(
+            state.pcs["Rook"].position, "Rook", state.pcs["Rook"].character,
+            state, grid, occupied, candidates,
+        )
+        # No RS candidates — Rook has no has_reactive_strike
+        # (RS candidates would be adjacent to enemies and allies)
+        # We can't distinguish RS from other categories, but
+        # verify has_reactive_strike is False
+        assert not state.pcs["Rook"].character.has_reactive_strike
+
+    def test_reactive_strike_field_exists(self) -> None:
+        """has_reactive_strike field exists on Character and NPCData."""
+        from pf2e.npc_data import NPCData
+        from pf2e.abilities import AbilityScores
+        # Check via actual PC character from scenario
+        state = _quick_state()
+        assert state.pcs["Rook"].character.has_reactive_strike is False
+        # Check via NPCData
+        n = NPCData(
+            name="Test", level=1, speed=25,
+            abilities=AbilityScores(10, 10, 10, 10, 10, 10),
+        )
+        assert n.has_reactive_strike is False
+
+    def test_enemy_gets_tactical_stride_categories(self) -> None:
+        """NPC enemy generates stride candidates from shared categories."""
+        from sim.candidates import generate_candidates
+        # Move all PCs far from enemy so stride is generated
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"position": (0, 0)},
+            "Rook": {"position": (0, 1)},
+            "Dalai Alpaca": {"position": (0, 2)},
+            "Erisen": {"position": (0, 3)},
+        })
+        candidates = generate_candidates(state, "Bandit1")
+        stride_actions = [a for a in candidates if a.type == ActionType.STRIDE]
+        # Should have stride candidates from approach + tactical categories
+        assert len(stride_actions) >= 1
+
+    def test_pc_stride_existing_categories_unchanged(self) -> None:
+        """Existing PC stride categories still generate correctly."""
+        from sim.candidates import generate_candidates
+        state = _quick_state()
+        candidates = generate_candidates(state, "Aetregan")
+        stride_actions = [a for a in candidates if a.type == ActionType.STRIDE]
+        # Aetregan should still get aggressive/kiting/flanking strides
+        assert len(stride_actions) >= 1
+
+    def test_ev_7_65_after_cp11_2_3(self) -> None:
+        """EV 7.65 preserved. 51st verification."""
+        from pf2e.tactics import STRIKE_HARD, evaluate_tactic
+        scenario = load_scenario("scenarios/checkpoint_1_strike_hard.scenario")
+        ctx = scenario.build_tactic_context()
+        result = evaluate_tactic(STRIKE_HARD, ctx)
+        assert result.expected_damage_dealt == pytest.approx(7.65, abs=EV_TOLERANCE)

@@ -81,6 +81,7 @@ class Character:
     has_soothe: bool = False             # Occult spell slot (AoN: Spells — Soothe)
     has_light_mortar: bool = False       # Inventor innovation (AoN: Innovations ID=4)
     has_taunt: bool = False              # Guardian class feature (AoN: Actions ID=3304)
+    has_reactive_strike: bool = False    # Fighter class feature (AoN: Actions ID=3041)
 
     # Known combat spells (slug → rank). Populated by importer from SPELL_REGISTRY.
     # Rank 0 = cantrip (unlimited), rank 1+ = spell slot required.

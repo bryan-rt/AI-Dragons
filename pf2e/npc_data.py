@@ -65,6 +65,7 @@ class NPCData:
     has_soothe: bool = False
     has_light_mortar: bool = False
     has_taunt: bool = False
+    has_reactive_strike: bool = False
     weapon_specialization: bool = False
     greater_weapon_spec: bool = False
     guardian_reactions: int = 0
