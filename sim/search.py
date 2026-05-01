@@ -145,6 +145,7 @@ class DebugActionEntry:
     score: float
     hp_delta: float
     condition_ev: float
+    aed_ev: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -186,6 +187,7 @@ def _debug_serialize(
             "action": e.action, "action_cost": e.action_cost,
             "score": round(e.score, 4), "hp_delta": round(e.hp_delta, 4),
             "condition_ev": round(e.condition_ev, 4),
+            "aed_ev": round(e.aed_ev, 4),
         }
 
     def _seq_to_dict(s: DebugSequenceEntry) -> dict:
@@ -614,7 +616,8 @@ def beam_search_turn(
                     continue
                 # Accumulate evaluator score_delta (condition EV, chain credit)
                 action_ev_delta = sum(
-                    o.probability * o.score_delta for o in result.outcomes
+                    o.probability * (o.score_delta + o.aed_delta)
+                    for o in result.outcomes
                 )
                 child_states = apply_action_result(
                     result, entry.state, initial, config,
@@ -658,7 +661,14 @@ def beam_search_turn(
                             action_cost=action.action_cost,
                             score=sc * new_weight,
                             hp_delta=hp_sc,
-                            condition_ev=action_ev_delta,
+                            condition_ev=sum(
+                                o.probability * o.score_delta
+                                for o in result.outcomes
+                            ),
+                            aed_ev=sum(
+                                o.probability * o.aed_delta
+                                for o in result.outcomes
+                            ),
                         ))
 
         # Keep top K

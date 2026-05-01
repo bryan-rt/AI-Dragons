@@ -1330,3 +1330,108 @@ class TestEnemyCandidates:
         candidates = generate_candidates(state, "Bandit1")
         end_actions = [a for a in candidates if a.type == ActionType.END_TURN]
         assert len(end_actions) >= 1
+
+
+# ===========================================================================
+# CP11.7: AED helpers and Taunt calibration
+# ===========================================================================
+
+class TestAEDHelpers:
+
+    def test_avg_enemy_attack_ev_positive(self):
+        """Returns positive value for standard enemy stats."""
+        from pf2e.actions import _avg_enemy_attack_ev
+        state = _quick_state()
+        ev = _avg_enemy_attack_ev(state)
+        assert ev > 0.0
+
+    def test_avg_enemy_attack_ev_fallback_no_enemies(self):
+        """Returns 3.5 when no living enemies."""
+        from pf2e.actions import _avg_enemy_attack_ev
+        state = _quick_state(enemy_overrides={"Bandit1": {"current_hp": 0}})
+        assert _avg_enemy_attack_ev(state) == 3.5
+
+    def test_avg_enemy_attack_ev_fallback_bad_dice(self):
+        """Returns 3.5 when enemy has empty damage_dice."""
+        from pf2e.actions import _avg_enemy_attack_ev
+        state = _quick_state(enemy_overrides={"Bandit1": {"damage_dice": ""}})
+        assert _avg_enemy_attack_ev(state) == 3.5
+
+    def test_avg_ally_damage_positive(self):
+        """Returns positive value when allies have weapons."""
+        from pf2e.actions import _avg_ally_damage
+        state = _quick_state()
+        dmg = _avg_ally_damage(state, "Rook")
+        assert dmg > 0.0
+
+    def test_avg_ally_damage_excludes_actor(self):
+        """Does not count the actor in ally damage calculation."""
+        from pf2e.actions import _avg_ally_damage
+        state = _quick_state()
+        dmg_excl_rook = _avg_ally_damage(state, "Rook")
+        dmg_excl_dalai = _avg_ally_damage(state, "Dalai Alpaca")
+        # Different actors excluded → different averages
+        assert dmg_excl_rook != pytest.approx(dmg_excl_dalai, abs=0.01)
+
+    def test_avg_ally_damage_fallback_no_allies(self):
+        """Returns 5.0 when no living allies (all dead or actor only)."""
+        from pf2e.actions import _avg_ally_damage
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"current_hp": 0},
+            "Dalai Alpaca": {"current_hp": 0},
+            "Erisen": {"current_hp": 0},
+        })
+        assert _avg_ally_damage(state, "Rook") == 5.0
+
+    def test_parse_damage_dice_valid(self):
+        """Parses standard NdM format."""
+        from pf2e.actions import _parse_damage_dice
+        assert _parse_damage_dice("1d8") == (1, "d8")
+        assert _parse_damage_dice("2d6") == (2, "d6")
+
+    def test_parse_damage_dice_invalid(self):
+        """Returns fallback for invalid formats."""
+        from pf2e.actions import _parse_damage_dice
+        assert _parse_damage_dice("") == (0, "d4")
+        assert _parse_damage_dice("nodice") == (0, "d4")
+
+
+class TestTauntAED:
+
+    def test_taunt_score_delta_nonzero(self):
+        """Taunt score_delta > 0 from penalty component."""
+        from pf2e.actions import evaluate_taunt
+        state = _quick_state()
+        action = Action(type=ActionType.TAUNT, actor_name="Rook",
+                       action_cost=1, target_name="Bandit1")
+        result = evaluate_taunt(action, state)
+        assert result.outcomes[0].score_delta > 0.0
+
+    def test_taunt_aed_delta_nonzero(self):
+        """Taunt aed_delta > 0 from off-guard component."""
+        from pf2e.actions import evaluate_taunt
+        state = _quick_state()
+        action = Action(type=ActionType.TAUNT, actor_name="Rook",
+                       action_cost=1, target_name="Bandit1")
+        result = evaluate_taunt(action, state)
+        assert result.outcomes[0].aed_delta > 0.0
+
+    def test_taunt_uses_actual_stats(self):
+        """Taunt score scales with enemy damage (not hardcoded 5.0)."""
+        from pf2e.actions import evaluate_taunt
+        # Low damage enemy
+        state_low = _quick_state(enemy_overrides={
+            "Bandit1": {"damage_dice": "1d4", "damage_bonus": 1},
+        })
+        action = Action(type=ActionType.TAUNT, actor_name="Rook",
+                       action_cost=1, target_name="Bandit1")
+        result_low = evaluate_taunt(action, state_low)
+
+        # High damage enemy
+        state_high = _quick_state(enemy_overrides={
+            "Bandit1": {"damage_dice": "2d8", "damage_bonus": 5},
+        })
+        result_high = evaluate_taunt(action, state_high)
+
+        # High damage enemy → higher score_delta (penalty component)
+        assert result_high.outcomes[0].score_delta > result_low.outcomes[0].score_delta

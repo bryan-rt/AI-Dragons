@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: April 2026, post-CP11.2.1 (Stride Reachability Fix).
+Last updated: May 2026, post-CP11.7 (AED Scoring).
 
 ## Test Count
 
-**1131 tests passing.**
+**1151 tests passing.**
 
 ## Active Checkpoint
 
@@ -28,7 +28,23 @@ CP10.9 (Death/Dying System) is **COMPLETE**.
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 47 times (most recently at CP11.2.1 — stride reachability fix).
+Verified 48 times (most recently at CP11.7 — AED scoring).
+
+## CP11.7 Status — COMPLETE
+
+Added `aed_delta: float = 0.0` to `ActionOutcome` — action economy disruption
+as a first-class scoring dimension. Critical bug fix: Trip and Disarm scored 0.0 EV
+because `_condition_ev` returned 0.0 for prone/off_guard/disarmed.
+
+Key additions:
+- `_avg_enemy_attack_ev(state)` — AED primitive from actual enemy stats
+- `_avg_ally_damage(state, actor_name)` — off-guard value from actual ally stats
+- `_condition_ev` expanded: prone (Stand cost × 0.70), off_guard (10% × ally dmg), disarmed
+- Feint/Diversion `DegreeEffect.score_delta` hardcodes → 0.0 (now computed dynamically)
+- Taunt calibrated: `score_delta=penalty_ev`, `aed_delta=off_guard_ev`
+- `DebugActionEntry.aed_ev` field for debug beam output
+
+1131 → 1151 tests. EV 7.65 verified (48th).
 
 Note: EV was 8.55 through CP7.1. Changed to 7.65 in Phase B when Foundry importer
 corrected Rook's weapon from Longsword (d8) to Earthbreaker (d6). This is correct per

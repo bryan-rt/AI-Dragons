@@ -161,7 +161,7 @@ CONTEST_ROLL_REGISTRY: dict[ActionType, ContestRollDef] = {
         target_dc_attr="perception",
         range_type="",
         crit_success=None,
-        success=DegreeEffect(conditions_on_target=("off_guard",), score_delta=1.0),
+        success=DegreeEffect(conditions_on_target=("off_guard",)),
         failure=DegreeEffect(),
         crit_failure=None,
         use_deceptive_tactics=True,
@@ -173,10 +173,10 @@ CONTEST_ROLL_REGISTRY: dict[ActionType, ContestRollDef] = {
         roller_skill=Skill.DECEPTION,
         target_dc_attr="perception",
         range_type="melee_reach",
-        crit_success=DegreeEffect(conditions_on_target=("off_guard",), score_delta=1.0),
-        success=DegreeEffect(conditions_on_target=("off_guard",), score_delta=0.5),
+        crit_success=DegreeEffect(conditions_on_target=("off_guard",)),
+        success=DegreeEffect(conditions_on_target=("off_guard",)),
         failure=DegreeEffect(),
-        crit_failure=DegreeEffect(conditions_on_actor=("off_guard",), score_delta=-0.5),
+        crit_failure=DegreeEffect(conditions_on_actor=("off_guard",)),
         use_deceptive_tactics=True,
         min_actions_remaining=2,
     ),
@@ -187,31 +187,70 @@ CONTEST_ROLL_REGISTRY: dict[ActionType, ContestRollDef] = {
 # Condition EV helper
 # ---------------------------------------------------------------------------
 
-def _condition_ev(condition: str, target: EnemySnapshot) -> float:
+def _condition_ev(
+    condition: str,
+    target: EnemySnapshot,
+    state: RoundState | None = None,
+) -> float:
     """Estimate EV of applying a named condition to an enemy target.
 
-    Handles frightened_N by computing the marginal gain over existing level.
-    Returns 0.0 for unmodeled conditions (prone, off_guard, disarmed, etc.).
+    Handles frightened_N, prone (Stand cost AED), off_guard (+2 ally hits),
+    and disarmed (-2 enemy attack penalty).
+    (AoN: https://2e.aonprd.com/Conditions.aspx?ID=88 — Prone)
+    (AoN: https://2e.aonprd.com/Conditions.aspx?ID=58 — Off-Guard)
     """
-    if not condition.startswith("frightened_"):
-        return 0.0
-    level = int(condition.split("_")[1])
-    current = max(
-        (int(c.split("_")[1]) for c in target.conditions
-         if c.startswith("frightened_")),
-        default=0,
-    )
-    gain = max(0, level - current)
-    if gain == 0:
-        return 0.0
-    # Frightened EV: -N to all enemy checks × hits × avg damage × 0.05
-    if target.damage_dice and "d" in target.damage_dice:
+    if condition.startswith("frightened_"):
+        level = int(condition.split("_")[1])
+        current = max(
+            (int(c.split("_")[1]) for c in target.conditions
+             if c.startswith("frightened_")),
+            default=0,
+        )
+        gain = max(0, level - current)
+        if gain == 0:
+            return 0.0
+        # Frightened EV: -N to all enemy checks × hits × avg damage × 0.05
+        if target.damage_dice and "d" in target.damage_dice:
+            parts = target.damage_dice.split("d", 1)
+            avg_dmg = int(parts[0]) * die_average(f"d{parts[1]}") + target.damage_bonus
+        else:
+            avg_dmg = float(target.damage_bonus)
+        per_level_ev = target.num_attacks_per_turn * avg_dmg * 0.05
+        return gain * per_level_ev
+
+    if condition == "prone":
+        # Enemy must spend 1 action to Stand next turn instead of attacking.
+        # Discounted by 0.7 for P(enemy survives to act on next turn).
+        # (AoN: https://2e.aonprd.com/Actions.aspx?ID=2323 — Stand)
+        if state is None:
+            return 1.5  # fallback: roughly one weak attack EV
+        from pf2e.actions import _avg_enemy_attack_ev
+        return _avg_enemy_attack_ev(state) * 0.70
+
+    if condition == "off_guard":
+        # +2 circumstance to attacker rolls ≈ 10% more hits × avg ally damage.
+        # Estimate: 1 remaining ally strike this round on average.
+        # (AoN: https://2e.aonprd.com/Conditions.aspx?ID=58)
+        if state is None:
+            return 0.5  # fallback
+        from pf2e.actions import _avg_ally_damage
+        return 0.10 * _avg_ally_damage(state, "")
+
+    if condition == "disarmed":
+        # -2 attack penalty ≈ 10% fewer hits × avg damage × attacks.
+        # (AoN: https://2e.aonprd.com/Actions.aspx?ID=2300)
+        if not target.damage_dice or "d" not in target.damage_dice:
+            return 0.0
         parts = target.damage_dice.split("d", 1)
-        avg_dmg = int(parts[0]) * die_average(f"d{parts[1]}") + target.damage_bonus
-    else:
-        avg_dmg = float(target.damage_bonus)
-    per_level_ev = target.num_attacks_per_turn * avg_dmg * 0.05
-    return gain * per_level_ev
+        try:
+            count = int(parts[0])
+            die_str = f"d{parts[1]}"
+        except (ValueError, IndexError):
+            return 0.0
+        avg_dmg = count * die_average(die_str) + target.damage_bonus
+        return 0.10 * avg_dmg * target.num_attacks_per_turn
+
+    return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -362,7 +401,7 @@ def evaluate_contest_roll(
         # Compute score_delta
         score = effect.score_delta
         for cond in effect.conditions_on_target:
-            score += _condition_ev(cond, target)
+            score += _condition_ev(cond, target, state)
         # Actor frightened penalty (Demoralize crit_failure deviation)
         for cond in effect.conditions_on_actor:
             if cond.startswith("frightened_"):

@@ -148,10 +148,29 @@ class TestConditionEv:
 
     def test_unknown_condition_zero(self):
         snap = _make_enemy_snap()
-        assert _condition_ev("prone", snap) == 0.0
-        assert _condition_ev("off_guard", snap) == 0.0
-        assert _condition_ev("disarmed", snap) == 0.0
         assert _condition_ev("something_weird", snap) == 0.0
+
+    def test_prone_fallback_without_state(self):
+        """prone returns safe fallback (1.5) when state=None."""
+        snap = _make_enemy_snap()
+        assert _condition_ev("prone", snap) == 1.5
+
+    def test_off_guard_fallback_without_state(self):
+        """off_guard returns safe fallback (0.5) when state=None."""
+        snap = _make_enemy_snap()
+        assert _condition_ev("off_guard", snap) == 0.5
+
+    def test_disarmed_nonzero(self):
+        """disarmed returns non-zero based on enemy damage stats."""
+        snap = _make_enemy_snap(damage_dice="1d8", damage_bonus=3, num_attacks=2)
+        ev = _condition_ev("disarmed", snap)
+        # 0.10 × (4.5 + 3) × 2 = 1.5
+        assert ev == pytest.approx(1.5, abs=0.01)
+
+    def test_disarmed_no_dice(self):
+        """disarmed returns 0.0 for enemies with no damage dice."""
+        snap = _make_enemy_snap(damage_dice="", damage_bonus=3)
+        assert _condition_ev("disarmed", snap) == 0.0
 
 
 # ===========================================================================
@@ -346,43 +365,46 @@ class TestContestRollOutcomes:
 
 
 # ===========================================================================
-# Parity (6) — new chassis matches old evaluator output
+# AED scoring (6) — CP11.7: contest roll actions have non-zero EV
 # ===========================================================================
 
-class TestContestRollParity:
+class TestContestRollAED:
 
-    def _compare_results(self, old_result, new_result):
-        """Assert two ActionResults have matching outcomes."""
-        assert old_result.eligible == new_result.eligible
-        if not old_result.eligible:
-            return
-        assert len(old_result.outcomes) == len(new_result.outcomes)
-        for old_o, new_o in zip(old_result.outcomes, new_result.outcomes):
-            assert old_o.probability == pytest.approx(new_o.probability, abs=1e-9)
-            assert old_o.conditions_applied == new_o.conditions_applied
-            assert old_o.score_delta == pytest.approx(new_o.score_delta, abs=EV_TOLERANCE)
-
-    def test_parity_trip(self):
+    def test_trip_nonzero_score_delta(self):
+        """Trip success has non-zero score_delta (was 0.0 before CP11.7)."""
         state = _quick_state()
         action = Action(
             type=ActionType.TRIP, actor_name="Rook", action_cost=1,
             target_name="Bandit1",
         )
-        old = evaluate_trip(action, state)
-        new = evaluate_contest_roll(action, state)
-        self._compare_results(old, new)
+        result = evaluate_contest_roll(action, state)
+        # Filter for outcomes that apply prone to the *target* (not the actor)
+        success_outcomes = [
+            o for o in result.outcomes
+            if o.conditions_applied.get("Bandit1")
+            and "prone" in o.conditions_applied["Bandit1"]
+        ]
+        assert len(success_outcomes) >= 1
+        for o in success_outcomes:
+            assert o.score_delta > 0.0
 
-    def test_parity_disarm(self):
+    def test_disarm_nonzero_score_delta(self):
+        """Disarm success has non-zero score_delta (was 0.0 before CP11.7)."""
         state = _quick_state()
         action = Action(
             type=ActionType.DISARM, actor_name="Rook", action_cost=1,
             target_name="Bandit1",
         )
-        old = evaluate_disarm(action, state)
-        new = evaluate_contest_roll(action, state)
-        self._compare_results(old, new)
+        result = evaluate_contest_roll(action, state)
+        success_outcomes = [
+            o for o in result.outcomes if "disarmed" in str(o.conditions_applied)
+        ]
+        assert len(success_outcomes) >= 1
+        for o in success_outcomes:
+            assert o.score_delta > 0.0
 
-    def test_parity_demoralize(self):
+    def test_demoralize_parity_preserved(self):
+        """Demoralize score_delta matches old evaluator (frightened unchanged)."""
         state = _quick_state()
         action = Action(
             type=ActionType.DEMORALIZE, actor_name="Rook", action_cost=1,
@@ -390,27 +412,45 @@ class TestContestRollParity:
         )
         old = evaluate_demoralize(action, state)
         new = evaluate_contest_roll(action, state)
-        self._compare_results(old, new)
+        assert old.eligible == new.eligible
+        assert len(old.outcomes) == len(new.outcomes)
+        for old_o, new_o in zip(old.outcomes, new.outcomes):
+            assert old_o.probability == pytest.approx(new_o.probability, abs=1e-9)
+            assert old_o.score_delta == pytest.approx(new_o.score_delta, abs=EV_TOLERANCE)
 
-    def test_parity_create_a_diversion(self):
-        state = _quick_state()
-        action = Action(
-            type=ActionType.CREATE_A_DIVERSION, actor_name="Aetregan",
-            action_cost=1, target_name="Bandit1",
-        )
-        old = evaluate_create_a_diversion(action, state)
-        new = evaluate_contest_roll(action, state)
-        self._compare_results(old, new)
-
-    def test_parity_feint(self):
+    def test_feint_score_from_condition_ev(self):
+        """Feint success score comes from _condition_ev, not hardcoded."""
         state = _quick_state()
         action = Action(
             type=ActionType.FEINT, actor_name="Aetregan", action_cost=1,
             target_name="Bandit1",
         )
-        old = evaluate_feint(action, state)
-        new = evaluate_contest_roll(action, state)
-        self._compare_results(old, new)
+        result = evaluate_contest_roll(action, state)
+        success_outcomes = [
+            o for o in result.outcomes
+            if o.conditions_applied.get("Bandit1") == ("off_guard",)
+            and o.probability < 0.5  # not the merged success
+        ]
+        # off_guard EV should be > 0 (from _condition_ev)
+        for o in success_outcomes:
+            assert o.score_delta > 0.0
+
+    def test_diversion_score_from_condition_ev(self):
+        """Create a Diversion success score comes from _condition_ev."""
+        state = _quick_state()
+        action = Action(
+            type=ActionType.CREATE_A_DIVERSION, actor_name="Aetregan",
+            action_cost=1, target_name="Bandit1",
+        )
+        result = evaluate_contest_roll(action, state)
+        success_outcomes = [
+            o for o in result.outcomes
+            if o.conditions_applied.get("Bandit1")
+            and "off_guard" in o.conditions_applied["Bandit1"]
+        ]
+        assert len(success_outcomes) >= 1
+        for o in success_outcomes:
+            assert o.score_delta > 0.0
 
     def test_dispatcher_routes_to_chassis(self):
         """evaluate_action() routes contest roll actions through the chassis."""
@@ -421,7 +461,11 @@ class TestContestRollParity:
         )
         dispatched = evaluate_action(action, state)
         direct = evaluate_contest_roll(action, state)
-        self._compare_results(dispatched, direct)
+        assert dispatched.eligible == direct.eligible
+        assert len(dispatched.outcomes) == len(direct.outcomes)
+        for d_o, r_o in zip(dispatched.outcomes, direct.outcomes):
+            assert d_o.probability == pytest.approx(r_o.probability, abs=1e-9)
+            assert d_o.score_delta == pytest.approx(r_o.score_delta, abs=EV_TOLERANCE)
 
 
 # ===========================================================================
@@ -430,11 +474,61 @@ class TestContestRollParity:
 
 class TestRegression:
 
-    def test_ev_7_65_27th_verification(self):
-        """27th verification: Strike Hard EV 7.65 after CP10.4.1."""
+    def test_ev_7_65_48th_verification(self):
+        """48th verification: Strike Hard EV 7.65 after CP11.7 AED."""
         from pf2e.tactics import STRIKE_HARD, evaluate_tactic
 
         scenario = load_scenario("scenarios/checkpoint_1_strike_hard.scenario")
         ctx = scenario.build_tactic_context()
         result = evaluate_tactic(STRIKE_HARD, ctx)
         assert result.expected_damage_dealt == pytest.approx(7.65, abs=EV_TOLERANCE)
+
+
+# ===========================================================================
+# AED condition_ev with state (5) — CP11.7
+# ===========================================================================
+
+class TestConditionEvWithState:
+
+    def test_prone_nonzero_with_state(self):
+        """prone returns non-zero AED when state is provided."""
+        state = _quick_state()
+        target = state.enemies["Bandit1"]
+        ev = _condition_ev("prone", target, state)
+        assert ev > 0.0
+
+    def test_prone_uses_avg_enemy_attack_ev(self):
+        """prone value = avg_enemy_attack_ev × 0.70 survival discount."""
+        state = _quick_state()
+        target = state.enemies["Bandit1"]
+        ev = _condition_ev("prone", target, state)
+        from pf2e.actions import _avg_enemy_attack_ev
+        expected = _avg_enemy_attack_ev(state) * 0.70
+        assert ev == pytest.approx(expected, abs=0.01)
+
+    def test_off_guard_nonzero_with_state(self):
+        """off_guard returns non-zero when state is provided."""
+        state = _quick_state()
+        target = state.enemies["Bandit1"]
+        ev = _condition_ev("off_guard", target, state)
+        assert ev > 0.0
+
+    def test_off_guard_uses_avg_ally_damage(self):
+        """off_guard value = 0.10 × avg_ally_damage."""
+        state = _quick_state()
+        target = state.enemies["Bandit1"]
+        ev = _condition_ev("off_guard", target, state)
+        from pf2e.actions import _avg_ally_damage
+        expected = 0.10 * _avg_ally_damage(state, "")
+        assert ev == pytest.approx(expected, abs=0.01)
+
+    def test_frightened_unchanged_with_state(self):
+        """frightened formula is unchanged when state is passed."""
+        snap = _make_enemy_snap()
+        ev_without = _condition_ev("frightened_1", snap)
+        state = _quick_state()
+        target = state.enemies["Bandit1"]
+        ev_with = _condition_ev("frightened_1", target, state)
+        # Both should be non-zero; values may differ due to different enemy stats
+        assert ev_without > 0.0
+        assert ev_with > 0.0

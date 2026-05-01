@@ -1,5 +1,22 @@
 # Changelog
 
+## [CP11.7] — 2026-05-01
+### Fixed
+- **Trip and Disarm scored 0.0 EV** — `_condition_ev("prone")` and `_condition_ev("off_guard")` both returned 0.0 in contest_roll.py. These actions were invisible to the beam search. Trip now scores Stand cost AED (avg_enemy_attack_ev × 0.70 survival discount). Disarm now scores -2 attack penalty EV.
+- **Feint/Diversion double-counted** — `DegreeEffect.score_delta` hardcoded values (1.0, 0.5, -0.5) overlapped with `_condition_ev`. Zeroed out; value now computed dynamically.
+- **Taunt used hardcoded 5.0 for ally damage** — Replaced with `_avg_ally_damage()` for actual ally weapon stats.
+
+### Added
+- **`ActionOutcome.aed_delta`** — structural field for action economy disruption value (float, default 0.0). Accumulated alongside `score_delta` in beam search.
+- **`_avg_enemy_attack_ev(state)`** — AED primitive: expected damage of one average enemy attack from actual living enemy stats. The value of forcing one lost action.
+- **`_avg_ally_damage(state, actor_name)`** — average damage per hit for living allies, used for off-guard value estimation.
+- **`_parse_damage_dice(dice_str)`** — safe parser for "NdM" format with fallback.
+- **`_condition_ev` expanded** — now handles `prone` (Stand cost), `off_guard` (+2 ally hits), `disarmed` (-2 enemy penalty). `state` parameter added (optional, with safe fallbacks).
+- **`DebugActionEntry.aed_ev`** — separate AED component visible in debug beam JSON output.
+- **Taunt evaluator calibrated** — `score_delta=penalty_ev` (enemy penalty), `aed_delta=off_guard_ev` (ally buff).
+- 20 new tests (1131 → 1151)
+- EV 7.65 verified (48th)
+
 ## [CP11.2.1] — 2026-04-30
 ### Fixed
 - **Stride reachability bug** — `_add_stride_candidates` and `_add_sneak_candidates` called `shortest_movement_cost(pos, dest)` which returns cost-to-adjacent-to-dest, not cost-to-dest. Destinations 5ft beyond speed were incorrectly included. Rook was recommended moves he couldn't complete in terrain scenarios.

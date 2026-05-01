@@ -132,6 +132,7 @@ class ActionOutcome:
     conditions_removed: dict[str, tuple[str, ...]] = field(default_factory=dict)
     reactions_consumed: dict[str, int] = field(default_factory=dict)
     score_delta: float = 0.0  # EV from conditions/effects not captured in hp_changes
+    aed_delta: float = 0.0   # action economy disruption value (structural, CP11.7)
     description: str = ""
     # Resource changes (spell slots, consumables). Maps resource_key → delta.
     resource_changes: dict[str, int] = field(default_factory=dict)
@@ -1618,18 +1619,13 @@ def evaluate_taunt(
     p_targets_ally = 1.0 - (1.0 / num_pcs)
     remaining_attacks = target.num_attacks_per_turn
 
-    # Rough enemy damage per attack
-    if target.damage_dice and "d" in target.damage_dice:
-        parts = target.damage_dice.split("d", 1)
-        avg_dmg = int(parts[0]) * die_average(f"d{parts[1]}") + target.damage_bonus
-    else:
-        avg_dmg = float(target.damage_bonus)
+    # -1 circumstance ≈ 5% fewer hits × AED primitive
+    avg_attack_ev = _avg_enemy_attack_ev(state)
+    penalty_ev = p_targets_ally * remaining_attacks * avg_attack_ev * 0.05
 
-    # -1 circumstance ≈ 5% fewer hits
-    penalty_ev = p_targets_ally * remaining_attacks * avg_dmg * 0.05
-    # Off-guard ≈ +10% hit chance for allies × rough ally damage
-    off_guard_ev = p_targets_ally * remaining_attacks * 0.10 * 5.0
-    taunt_ev = penalty_ev + off_guard_ev
+    # Off-guard ≈ +10% hit chance for allies × actual ally damage
+    ally_dmg = _avg_ally_damage(state, action.actor_name)
+    off_guard_ev = p_targets_ally * remaining_attacks * 0.10 * ally_dmg
 
     taunted_key = f"taunted_by_{action.actor_name.lower().replace(' ', '_')}"
     taunting_key = f"taunting_{action.target_name}"
@@ -1642,8 +1638,10 @@ def evaluate_taunt(
                 action.target_name: (taunted_key,),
                 action.actor_name: (taunting_key,),
             },
-            score_delta=taunt_ev,
-            description=f"Taunt {action.target_name} (EV +{taunt_ev:.2f})",
+            score_delta=penalty_ev,
+            aed_delta=off_guard_ev,
+            description=f"Taunt {action.target_name} "
+                        f"(EV +{penalty_ev + off_guard_ev:.2f})",
         ),),
     )
 
@@ -1815,6 +1813,69 @@ def _hidden_defensive_value(state: RoundState) -> float:
     avg_dmg_per_attack /= max(1, len(living_enemies))
 
     return attacks_on_me * 0.50 * avg_dmg_per_attack
+
+
+def _parse_damage_dice(dice_str: str) -> tuple[int, str]:
+    """Parse "NdM" into (count, "dM"). Returns (0, "d4") on failure."""
+    if not dice_str or "d" not in dice_str:
+        return (0, "d4")
+    parts = dice_str.split("d", 1)
+    try:
+        return (int(parts[0]), f"d{parts[1]}")
+    except (ValueError, IndexError):
+        return (0, "d4")
+
+
+def _avg_enemy_attack_ev(state: RoundState) -> float:
+    """Expected damage value of one average enemy attack in current state.
+
+    The AED primitive: value of forcing one enemy action loss ≈ this.
+    Averaged across living enemies weighted by num_attacks_per_turn.
+    Falls back to 3.5 if no data available.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2187 — Attack Rolls)
+    """
+    living_enemies = [e for e in state.enemies.values() if e.current_hp > 0]
+    if not living_enemies:
+        return 3.5
+
+    living_pcs = [p for p in state.pcs.values() if p.current_hp > 0]
+    if not living_pcs:
+        avg_party_ac = 16.0
+    else:
+        avg_party_ac = sum(
+            armor_class(p)  # type: ignore[arg-type]
+            for p in living_pcs
+        ) / len(living_pcs)
+
+    total_ev = 0.0
+    total_weight = 0.0
+    for enemy in living_enemies:
+        count, die_str = _parse_damage_dice(enemy.damage_dice)
+        if count == 0:
+            continue
+        avg_dmg = count * die_average(die_str) + enemy.damage_bonus
+        outcomes_d20 = enumerate_d20_outcomes(enemy.attack_bonus, int(avg_party_ac))
+        hit_prob = (outcomes_d20.success + outcomes_d20.critical_success) / 20
+        ev = hit_prob * avg_dmg
+        weight = float(enemy.num_attacks_per_turn)
+        total_ev += ev * weight
+        total_weight += weight
+
+    return total_ev / total_weight if total_weight > 0 else 3.5
+
+
+def _avg_ally_damage(state: RoundState, actor_name: str) -> float:
+    """Average damage per hit for allies (excluding actor).
+
+    Used to estimate off-guard value: +2 attack ≈ 10% more hits × this.
+    """
+    totals: list[float] = []
+    for name, pc in state.pcs.items():
+        if name == actor_name or pc.current_hp <= 0:
+            continue
+        if pc.character.equipped_weapons:
+            totals.append(damage_avg(pc, pc.character.equipped_weapons[0]))  # type: ignore[arg-type]
+    return sum(totals) / len(totals) if totals else 5.0
 
 
 def _has_cover_or_concealment(
