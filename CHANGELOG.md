@@ -1,5 +1,11 @@
 # Changelog
 
+## [CP11.2.2.1] — 2026-05-02
+### Fixed
+- **Zero-distance stride bug** — `_enemy_candidates` and `_add_tactical_stride_categories` emitted stride candidates where `target_position == enemy.position`. Zero-distance stride scored -0.0 and won the beam, causing enemies to idle for full turns. Guard added at enemy emission loop and early-continue in all scan loops of Categories A–D.
+- PC version (`_add_stride_candidates`) already had the guard at the BFS filter — confirmed safe.
+- 4 new tests (1182 → 1186), EV 7.65 (52nd verification)
+
 ## [CP11.2.3] — 2026-05-01
 ### Added
 - **`_add_tactical_stride_categories()`** — shared by PC and NPC stride candidate generation. Contains 5 faction-agnostic categories.

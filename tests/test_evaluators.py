@@ -1821,3 +1821,59 @@ class TestTacticalStrideCategories:
         ctx = scenario.build_tactic_context()
         result = evaluate_tactic(STRIKE_HARD, ctx)
         assert result.expected_damage_dealt == pytest.approx(7.65, abs=EV_TOLERANCE)
+
+
+# ===========================================================================
+# CP11.2.2.1: Zero-distance stride fix
+# ===========================================================================
+
+class TestZeroDistanceStrideFix:
+
+    def test_enemy_stride_never_targets_current_position(self) -> None:
+        """No enemy STRIDE has target_position == enemy.position."""
+        from sim.candidates import generate_candidates
+        state = _quick_state(pc_overrides={
+            "Aetregan": {"position": (0, 0)},
+            "Rook": {"position": (0, 1)},
+            "Dalai Alpaca": {"position": (0, 2)},
+            "Erisen": {"position": (0, 3)},
+        })
+        enemy_pos = state.enemies["Bandit1"].position
+        candidates = generate_candidates(state, "Bandit1")
+        strides = [a for a in candidates if a.type == ActionType.STRIDE]
+        for a in strides:
+            assert a.target_position != enemy_pos
+
+    def test_pc_stride_never_targets_current_position(self) -> None:
+        """No PC STRIDE has target_position == actor.position."""
+        from sim.candidates import generate_candidates
+        state = _quick_state()
+        actor_pos = state.pcs["Rook"].position
+        candidates = generate_candidates(state, "Rook")
+        strides = [a for a in candidates if a.type == ActionType.STRIDE]
+        for a in strides:
+            assert a.target_position != actor_pos
+
+    def test_tactical_categories_never_add_current_position(self) -> None:
+        """_add_tactical_stride_categories never emits actor's own pos."""
+        from sim.candidates import (
+            _add_tactical_stride_categories, _occupied_positions,
+        )
+        state = _quick_state()
+        actor_pos = state.pcs["Rook"].position
+        grid = state.grid
+        occupied = _occupied_positions(state) - {actor_pos}
+        result: set = set()
+        _add_tactical_stride_categories(
+            actor_pos, "Rook", state.pcs["Rook"].character,
+            state, grid, occupied, result,
+        )
+        assert actor_pos not in result
+
+    def test_ev_7_65_after_cp11_2_2_1(self) -> None:
+        """EV 7.65 preserved. 52nd verification."""
+        from pf2e.tactics import STRIKE_HARD, evaluate_tactic
+        scenario = load_scenario("scenarios/checkpoint_1_strike_hard.scenario")
+        ctx = scenario.build_tactic_context()
+        result = evaluate_tactic(STRIKE_HARD, ctx)
+        assert result.expected_damage_dealt == pytest.approx(7.65, abs=EV_TOLERANCE)

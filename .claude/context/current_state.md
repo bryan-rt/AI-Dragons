@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: May 2026, post-CP11.2.3 (Tactical Stride Categories).
+Last updated: May 2026, post-CP11.2.2.1 (Zero-Distance Stride Fix).
 
 ## Test Count
 
-**1182 tests passing.**
+**1186 tests passing.**
 
 ## Active Checkpoint
 
@@ -28,7 +28,15 @@ CP10.9 (Death/Dying System) is **COMPLETE**.
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 51 times (most recently at CP11.2.3 — tactical stride categories).
+Verified 52 times (most recently at CP11.2.2.1 — zero-distance stride fix).
+
+## CP11.2.2.1 Status — COMPLETE
+
+Fixed zero-distance stride bug: _enemy_candidates and _add_tactical_stride_categories
+emitted strides where target_position == enemy.position. Guard at emission loop and
+early-continue in scan loops. PC version already safe (BFS filter at line 808).
+
+1182 → 1186 tests. EV 7.65 verified (52nd).
 
 ## CP11.2.3 Status — COMPLETE
 

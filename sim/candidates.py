@@ -144,6 +144,8 @@ def _add_tactical_stride_categories(
                 if cover_added >= 4:
                     break
                 dest = (actor_pos[0] + dr, actor_pos[1] + dc)
+                if dest == actor_pos:
+                    continue
                 if not (0 <= dest[0] < grid.rows
                         and 0 <= dest[1] < grid.cols):
                     continue
@@ -168,6 +170,8 @@ def _add_tactical_stride_categories(
             if chokepoint_added >= 3:
                 break
             dest = (actor_pos[0] + dr, actor_pos[1] + dc)
+            if dest == actor_pos:
+                continue
             if not (0 <= dest[0] < grid.rows
                     and 0 <= dest[1] < grid.cols):
                 continue
@@ -211,6 +215,8 @@ def _add_tactical_stride_categories(
                 if escape_added >= 3:
                     break
                 dest = (actor_pos[0] + dr, actor_pos[1] + dc)
+                if dest == actor_pos:
+                    continue
                 if not (0 <= dest[0] < grid.rows
                         and 0 <= dest[1] < grid.cols):
                     continue
@@ -235,6 +241,8 @@ def _add_tactical_stride_categories(
         for dr in range(-scan_range, scan_range + 1):
             for dc in range(-scan_range, scan_range + 1):
                 dest = (actor_pos[0] + dr, actor_pos[1] + dc)
+                if dest == actor_pos:
+                    continue
                 if not (0 <= dest[0] < grid.rows
                         and 0 <= dest[1] < grid.cols):
                     continue
@@ -1112,8 +1120,10 @@ def _enemy_candidates(state: RoundState, actor_name: str) -> list[Action]:
             state, grid, occupied, stride_destinations,
         )
 
-        # Emit stride candidates
+        # Emit stride candidates (skip zero-distance strides)
         for dest in stride_destinations:
+            if dest == enemy.position:
+                continue
             actions.append(Action(
                 type=ActionType.STRIDE, actor_name=actor_name,
                 action_cost=1, target_position=dest,
