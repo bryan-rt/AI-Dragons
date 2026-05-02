@@ -1,10 +1,10 @@
 # Current State
 
-Last updated: May 2026, post-CP11.2.2.1 (Zero-Distance Stride Fix).
+Last updated: May 2026, post-CP11.2.2.2 (Unified Candidate Generator).
 
 ## Test Count
 
-**1186 tests passing.**
+**1197 tests passing.**
 
 ## Active Checkpoint
 
@@ -28,7 +28,16 @@ CP10.9 (Death/Dying System) is **COMPLETE**.
 ## Killer Regression
 
 **EV 7.65** — Strike Hard, Rook Earthbreaker reaction Strike with Anthem vs Bandit1 AC 15.
-Verified 52 times (most recently at CP11.2.2.1 — zero-distance stride fix).
+Verified 53 times (most recently at CP11.2.2.2 — unified candidate generator).
+
+## CP11.2.2.2 Status — COMPLETE
+
+Shared candidate generators: _add_demoralize_candidates, _add_feint_candidates,
+_add_cast_spell_candidates — extracted from _pc_candidates, called by both PC
+and NPC paths. Intermediate approach stride for distant enemies. Flat-stat
+enemies (character=None) unaffected.
+
+1186 → 1197 tests. EV 7.65 verified (53rd).
 
 ## CP11.2.2.1 Status — COMPLETE
 

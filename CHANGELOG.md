@@ -1,5 +1,18 @@
 # Changelog
 
+## [CP11.2.2.2] — 2026-05-02
+### Added
+- **Shared candidate generators** — `_add_demoralize_candidates()`, `_add_feint_candidates()`, `_add_cast_spell_candidates()`. Extracted from `_pc_candidates`, called by both PC and NPC paths. All faction reads via `_opponents()`.
+- **Enemy Demoralize** — NPC enemies with NPCData generate DEMORALIZE against PCs within 30ft. Respects immunity and frightened_2+ suppression.
+- **Enemy Feint** — NPC enemies generate FEINT against PCs in melee reach (requires 2+ actions).
+- **Enemy CAST_SPELL** — infrastructure for NPC spellcasting. Slot-gated spells blocked without resources (conservative until Phase C.4). Cantrips would generate if any were in SPELL_REGISTRY.
+- **Intermediate approach stride** — when no adjacent-to-PC square is reachable in one stride, enemy finds the closest reachable square toward the best-priority PC. Fixes multi-stride approach for distant enemies.
+- 11 new tests (1186 → 1197), EV 7.65 (53rd verification)
+
+### Fixed
+- **Goblin Warrior max_hp test** — updated from 6 to 16 to match authoritative Foundry JSON.
+- Flat-stat enemies (character=None) unaffected — shared generators gated on `enemy.character is not None`.
+
 ## [CP11.2.2.1] — 2026-05-02
 ### Fixed
 - **Zero-distance stride bug** — `_enemy_candidates` and `_add_tactical_stride_categories` emitted stride candidates where `target_position == enemy.position`. Zero-distance stride scored -0.0 and won the beam, causing enemies to idle for full turns. Guard added at enemy emission loop and early-continue in all scan loops of Categories A–D.

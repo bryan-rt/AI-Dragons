@@ -37,7 +37,7 @@ class TestScenarioLoading:
         warrior = next(
             e for e in scenario.enemies if "Warrior" in e.name)
         assert warrior.ac == 16
-        assert warrior.max_hp == 6
+        assert warrior.max_hp == 16
         assert warrior.attack_bonus == 7
 
     def test_goblin_war_chanter_stats(self):

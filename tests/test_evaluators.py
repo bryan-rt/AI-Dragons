@@ -1877,3 +1877,173 @@ class TestZeroDistanceStrideFix:
         ctx = scenario.build_tactic_context()
         result = evaluate_tactic(STRIKE_HARD, ctx)
         assert result.expected_damage_dealt == pytest.approx(7.65, abs=EV_TOLERANCE)
+
+
+# ===========================================================================
+# CP11.2.2.2: Unified candidate generator — enemy parity
+# ===========================================================================
+
+class TestUnifiedCandidateGenerator:
+
+    def test_npc_enemy_generates_demoralize(self) -> None:
+        """NPC enemy with character generates DEMORALIZE against PCs."""
+        from sim.candidates import generate_candidates
+        from pf2e.npc_data import NPCData
+        from pf2e.abilities import AbilityScores
+        npc = NPCData(
+            name="Goblin", level=1, speed=25,
+            abilities=AbilityScores(10, 14, 10, 10, 10, 12),
+        )
+        # Place enemy within 30ft of PC
+        state = _quick_state(enemy_overrides={
+            "Bandit1": {"character": npc, "position": (4, 7)},
+        })
+        candidates = generate_candidates(state, "Bandit1")
+        dem = [a for a in candidates if a.type == ActionType.DEMORALIZE]
+        assert len(dem) >= 1
+
+    def test_npc_demoralize_skips_immune(self) -> None:
+        """DEMORALIZE not generated if target has demoralize_immune."""
+        from sim.candidates import generate_candidates
+        from pf2e.npc_data import NPCData
+        from pf2e.abilities import AbilityScores
+        npc = NPCData(
+            name="Goblin", level=1, speed=25,
+            abilities=AbilityScores(10, 14, 10, 10, 10, 12),
+        )
+        state = _quick_state(
+            pc_overrides={
+                "Rook": {"conditions": frozenset({"demoralize_immune"})},
+            },
+            enemy_overrides={
+                "Bandit1": {"character": npc, "position": (4, 7)},
+            },
+        )
+        candidates = generate_candidates(state, "Bandit1")
+        dem_rook = [a for a in candidates
+                    if a.type == ActionType.DEMORALIZE
+                    and a.target_name == "Rook"]
+        assert len(dem_rook) == 0
+
+    def test_npc_enemy_generates_feint_in_reach(self) -> None:
+        """NPC enemy generates FEINT against PC in melee reach."""
+        from sim.candidates import generate_candidates
+        from pf2e.npc_data import NPCData
+        from pf2e.abilities import AbilityScores
+        npc = NPCData(
+            name="Goblin", level=1, speed=25,
+            abilities=AbilityScores(10, 14, 10, 10, 10, 12),
+        )
+        state = _quick_state(enemy_overrides={
+            "Bandit1": {"character": npc},
+        })
+        candidates = generate_candidates(state, "Bandit1")
+        feints = [a for a in candidates if a.type == ActionType.FEINT]
+        assert len(feints) >= 1
+
+    def test_npc_feint_requires_2_actions(self) -> None:
+        """FEINT not generated if only 1 action remaining."""
+        from sim.candidates import generate_candidates
+        from pf2e.npc_data import NPCData
+        from pf2e.abilities import AbilityScores
+        npc = NPCData(
+            name="Goblin", level=1, speed=25,
+            abilities=AbilityScores(10, 14, 10, 10, 10, 12),
+        )
+        state = _quick_state(enemy_overrides={
+            "Bandit1": {"character": npc, "actions_remaining": 1},
+        })
+        candidates = generate_candidates(state, "Bandit1")
+        feints = [a for a in candidates if a.type == ActionType.FEINT]
+        assert len(feints) == 0
+
+    def test_npc_cast_spell_blocked_without_resources(self) -> None:
+        """Slot-gated spells not generated when resources empty."""
+        from sim.candidates import generate_candidates
+        from pf2e.npc_data import NPCData
+        from pf2e.abilities import AbilityScores
+        npc = NPCData(
+            name="Caster", level=1, speed=25,
+            abilities=AbilityScores(10, 10, 10, 10, 10, 14),
+            known_spells={"fear": 1},  # rank 1, uses_spell_slot=True
+        )
+        state = _quick_state(enemy_overrides={
+            "Bandit1": {"character": npc, "damage_dice": ""},
+        })
+        candidates = generate_candidates(state, "Bandit1")
+        spells = [a for a in candidates if a.type == ActionType.CAST_SPELL]
+        # No resources → slot check returns 0 → blocked
+        assert len(spells) == 0
+
+    def test_flat_stat_enemy_no_shared_generators(self) -> None:
+        """Flat-stat enemy (character=None) skips shared generators."""
+        from sim.candidates import generate_candidates
+        state = _quick_state()
+        candidates = generate_candidates(state, "Bandit1")
+        # Bandit1 has character=None → no Demoralize, Feint, CAST_SPELL
+        dem = [a for a in candidates if a.type == ActionType.DEMORALIZE]
+        feint = [a for a in candidates if a.type == ActionType.FEINT]
+        assert len(dem) == 0
+        assert len(feint) == 0
+
+    def test_pc_demoralize_unchanged_after_refactor(self) -> None:
+        """PC DEMORALIZE candidates work correctly via shared generator."""
+        from sim.candidates import generate_candidates
+        state = _quick_state()
+        candidates = generate_candidates(state, "Aetregan")
+        dem = [a for a in candidates if a.type == ActionType.DEMORALIZE]
+        # Aetregan should still generate Demoralize vs Bandit1
+        assert len(dem) >= 1
+        assert any(a.target_name == "Bandit1" for a in dem)
+
+    def test_pc_feint_unchanged_after_refactor(self) -> None:
+        """PC FEINT candidates work correctly via shared generator."""
+        from sim.candidates import generate_candidates
+        state = _quick_state()
+        candidates = generate_candidates(state, "Aetregan")
+        feints = [a for a in candidates if a.type == ActionType.FEINT]
+        # Aetregan adjacent to Bandit1 should generate Feint
+        assert len(feints) >= 1
+
+    def test_pc_cast_spell_unchanged_after_refactor(self) -> None:
+        """PC CAST_SPELL candidates work correctly via shared generator."""
+        from sim.candidates import generate_candidates
+        state = _quick_state()
+        candidates = generate_candidates(state, "Dalai Alpaca")
+        spells = [a for a in candidates if a.type == ActionType.CAST_SPELL]
+        # Dalai has known_spells → should generate CAST_SPELL
+        assert len(spells) >= 1
+
+    def test_intermediate_approach_when_far(self) -> None:
+        """Enemy generates approach stride when PC is >1 stride away."""
+        from sim.candidates import generate_candidates
+        state = _quick_state(
+            pc_overrides={
+                "Aetregan": {"position": (0, 0)},
+                "Rook": {"position": (0, 1)},
+                "Dalai Alpaca": {"position": (0, 2)},
+                "Erisen": {"position": (0, 3)},
+            },
+            enemy_overrides={
+                "Bandit1": {"position": (8, 8)},
+            },
+        )
+        candidates = generate_candidates(state, "Bandit1")
+        strides = [a for a in candidates if a.type == ActionType.STRIDE]
+        assert len(strides) >= 1
+        # At least one stride should reduce distance to nearest PC
+        from sim.grid import distance_ft as _dist
+        original_dist = _dist((8, 8), (0, 3))
+        approach_strides = [
+            s for s in strides
+            if _dist(s.target_position, (0, 3)) < original_dist
+        ]
+        assert len(approach_strides) >= 1
+
+    def test_ev_7_65_after_cp11_2_2_2(self) -> None:
+        """EV 7.65 preserved. 53rd verification."""
+        from pf2e.tactics import STRIKE_HARD, evaluate_tactic
+        scenario = load_scenario("scenarios/checkpoint_1_strike_hard.scenario")
+        ctx = scenario.build_tactic_context()
+        result = evaluate_tactic(STRIKE_HARD, ctx)
+        assert result.expected_damage_dealt == pytest.approx(7.65, abs=EV_TOLERANCE)

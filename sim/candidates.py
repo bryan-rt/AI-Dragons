@@ -293,6 +293,109 @@ def _add_tactical_stride_categories(
 
 
 # ---------------------------------------------------------------------------
+# Shared candidate generators (CP11.2.2.2)
+# ---------------------------------------------------------------------------
+
+def _add_demoralize_candidates(
+    actor_name: str,
+    actor_pos: Pos,
+    actor_conditions: frozenset[str],
+    state: RoundState,
+    actions: list[Action],
+) -> None:
+    """DEMORALIZE candidates for any actor. Faction-agnostic.
+    (AoN: https://2e.aonprd.com/Actions.aspx?ID=2304)
+    """
+    opp = _opponents(state, actor_name)
+    for en_name, target in opp.items():
+        if target.current_hp <= 0:
+            continue
+        if "demoralize_immune" in target.conditions:
+            continue
+        already_frightened = max(
+            (int(c.split("_")[1]) for c in target.conditions
+             if c.startswith("frightened_")),
+            default=0,
+        )
+        if already_frightened >= 2:
+            continue
+        if distance_ft(actor_pos, target.position) <= 30:
+            actions.append(Action(
+                type=ActionType.DEMORALIZE, actor_name=actor_name,
+                action_cost=1, target_name=en_name,
+            ))
+
+
+def _add_feint_candidates(
+    actor_name: str,
+    actor_pos: Pos,
+    actor_reach: int,
+    actions_remaining: int,
+    state: RoundState,
+    actions: list[Action],
+) -> None:
+    """FEINT candidates for any actor with 2+ actions. Faction-agnostic.
+    (AoN: https://2e.aonprd.com/Skills.aspx?ID=38)
+    """
+    if actions_remaining < 2:
+        return
+    opp = _opponents(state, actor_name)
+    for en_name, target in opp.items():
+        if target.current_hp <= 0:
+            continue
+        if target.off_guard or getattr(target, 'prone', False):
+            continue
+        if is_within_reach(actor_pos, target.position, actor_reach):
+            actions.append(Action(
+                type=ActionType.FEINT, actor_name=actor_name,
+                action_cost=1, target_name=en_name,
+            ))
+
+
+def _add_cast_spell_candidates(
+    actor_name: str,
+    actor_pos: Pos,
+    actor_char: object,
+    resources: dict[str, int],
+    actions_remaining: int,
+    state: RoundState,
+    actions: list[Action],
+) -> None:
+    """CAST_SPELL candidates for any actor with known_spells. Faction-agnostic.
+    (AoN: https://2e.aonprd.com/Rules.aspx?ID=2302)
+    """
+    from pf2e.spells import SPELL_REGISTRY
+    known = getattr(actor_char, 'known_spells', {})
+    if not known:
+        return
+    opp = _opponents(state, actor_name)
+    for slug, rank in known.items():
+        defn = SPELL_REGISTRY.get(slug)
+        if defn is None:
+            continue
+        if defn.uses_spell_slot:
+            slot_key = f"spell_slot_{defn.spell_slot_rank}"
+            if resources.get(slot_key, 0) <= 0:
+                continue
+        if defn.scales_with_actions:
+            costs = [c for c in range(1, 4) if c <= actions_remaining]
+        else:
+            costs = ([defn.action_cost]
+                     if defn.action_cost <= actions_remaining else [])
+        for cost in costs:
+            for en_name, target in opp.items():
+                if target.current_hp <= 0:
+                    continue
+                if distance_ft(actor_pos, target.position) > defn.range_ft:
+                    continue
+                actions.append(Action(
+                    type=ActionType.CAST_SPELL, actor_name=actor_name,
+                    action_cost=cost, target_name=en_name,
+                    tactic_name=slug,
+                ))
+
+
+# ---------------------------------------------------------------------------
 # PC candidate generation
 # ---------------------------------------------------------------------------
 
@@ -342,25 +445,10 @@ def _pc_candidates(
                 action_cost=1, target_name=en_name,
             ))
 
-    # DEMORALIZE: one per living enemy within 30 ft, not immune.
-    # Suppress if already frightened_2+ (both success and crit are no-ops).
-    for en_name, enemy in state.enemies.items():
-        if enemy.current_hp <= 0:
-            continue
-        if "demoralize_immune" in enemy.conditions:
-            continue
-        already_frightened = max(
-            (int(c.split("_")[1]) for c in enemy.conditions
-             if c.startswith("frightened_")),
-            default=0,
-        )
-        if already_frightened >= 2:
-            continue
-        if distance_ft(actor.position, enemy.position) <= 30:
-            actions.append(Action(
-                type=ActionType.DEMORALIZE, actor_name=actor_name,
-                action_cost=1, target_name=en_name,
-            ))
+    # DEMORALIZE: shared generator (CP11.2.2.2)
+    _add_demoralize_candidates(
+        actor_name, actor.position, actor.conditions, state, actions,
+    )
 
     # CREATE_A_DIVERSION: one per living enemy, not immune.
     # Suppress if target already off_guard (from prone, prior Diversion, etc.).
@@ -376,19 +464,11 @@ def _pc_candidates(
             action_cost=1, target_name=en_name,
         ))
 
-    # FEINT: one per living enemy in melee reach (needs >= 2 actions).
-    # Suppress if target already off_guard.
-    if actor.actions_remaining >= 2:
-        for en_name, enemy in state.enemies.items():
-            if enemy.current_hp <= 0:
-                continue
-            if is_within_reach(actor.position, enemy.position, reach):
-                if enemy.off_guard or enemy.prone:
-                    continue
-                actions.append(Action(
-                    type=ActionType.FEINT, actor_name=actor_name,
-                    action_cost=1, target_name=en_name,
-                ))
+    # FEINT: shared generator (CP11.2.2.2)
+    _add_feint_candidates(
+        actor_name, actor.position, reach, actor.actions_remaining,
+        state, actions,
+    )
 
     # RAISE_SHIELD
     if (actor.character.shield is not None
@@ -518,34 +598,11 @@ def _pc_candidates(
                     action_cost=2, target_name=pc_name,
                 ))
 
-    # CAST_SPELL: for each known spell in SPELL_REGISTRY (CP5.4)
-    # CP7.2: check spell slot availability before generating candidates
-    from pf2e.spells import SPELL_REGISTRY
-    for slug, rank in actor.character.known_spells.items():
-        defn = SPELL_REGISTRY.get(slug)
-        if defn is None:
-            continue
-        if defn.uses_spell_slot:
-            slot_key = f"spell_slot_{defn.spell_slot_rank}"
-            if actor.resources.get(slot_key, 0) <= 0:
-                continue  # Slot depleted
-        if defn.scales_with_actions:
-            costs = [c for c in range(1, 4) if c <= actor.actions_remaining]
-        else:
-            costs = [defn.action_cost] if defn.action_cost <= actor.actions_remaining else []
-        for cost in costs:
-            for en_name, enemy in state.enemies.items():
-                if enemy.current_hp <= 0:
-                    continue
-                if distance_ft(actor.position, enemy.position) > defn.range_ft:
-                    continue
-                actions.append(Action(
-                    type=ActionType.CAST_SPELL,
-                    actor_name=actor_name,
-                    action_cost=cost,
-                    target_name=en_name,
-                    tactic_name=slug,
-                ))
+    # CAST_SPELL: shared generator (CP11.2.2.2)
+    _add_cast_spell_candidates(
+        actor_name, actor.position, actor.character,
+        actor.resources, actor.actions_remaining, state, actions,
+    )
 
     # INTERACT: draw a stowed weapon when a free hand is available (CP7.2)
     if actor.actions_remaining >= 1:
@@ -1037,6 +1094,33 @@ def _enemy_candidates(state: RoundState, actor_name: str) -> list[Action]:
             )
             if dest is not None:
                 stride_destinations.add(dest)
+            else:
+                # Intermediate approach: no adjacent-to-PC square reachable
+                # this turn. Find closest reachable square toward target.
+                target_pos = best_pc.position
+                best_advance: Pos | None = None
+                best_remaining_dist = 999
+                for dr in range(-6, 7):
+                    for dc in range(-6, 7):
+                        adv = (enemy.position[0] + dr, enemy.position[1] + dc)
+                        if adv == enemy.position:
+                            continue
+                        if not (0 <= adv[0] < grid.rows
+                                and 0 <= adv[1] < grid.cols):
+                            continue
+                        if adv in occupied or adv in grid.walls:
+                            continue
+                        if not can_reach(
+                            enemy.position, adv, enemy_speed,
+                            occupied | grid.walls, grid,
+                        ):
+                            continue
+                        remaining = distance_ft(adv, target_pos)
+                        if remaining < best_remaining_dist:
+                            best_remaining_dist = remaining
+                            best_advance = adv
+                if best_advance is not None:
+                    stride_destinations.add(best_advance)
         else:
             # Caster: find standoff within spell range but outside melee
             for min_safe_dist in (15, 10, 5):
@@ -1128,6 +1212,24 @@ def _enemy_candidates(state: RoundState, actor_name: str) -> list[Action]:
                 type=ActionType.STRIDE, actor_name=actor_name,
                 action_cost=1, target_position=dest,
             ))
+
+    # -------------------------------------------------------------------
+    # Shared candidate generators (CP11.2.2.2)
+    # Only for NPC enemies with NPCData (flat-stat enemies skip)
+    # -------------------------------------------------------------------
+    if enemy.character is not None and enemy.actions_remaining >= 1:
+        _add_demoralize_candidates(
+            actor_name, enemy.position, enemy.conditions, state, actions,
+        )
+        _add_feint_candidates(
+            actor_name, enemy.position, reach,
+            enemy.actions_remaining, state, actions,
+        )
+        _add_cast_spell_candidates(
+            actor_name, enemy.position, enemy.character,
+            getattr(enemy, 'resources', {}),
+            enemy.actions_remaining, state, actions,
+        )
 
     # -------------------------------------------------------------------
     # STAND: if prone

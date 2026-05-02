@@ -47,7 +47,7 @@ class TestGoblinWarrior:
         npc = import_foundry_npc(WARRIOR)
         assert npc.name == "Goblin Warrior"
         assert npc.level == -1
-        assert npc._max_hp == 6
+        assert npc._max_hp == 16
         assert npc._ac_total == 16
         assert npc.speed == 25
 
